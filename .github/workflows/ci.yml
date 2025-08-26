@@ -5,11 +5,13 @@ on:
     branches: ["**"]
   pull_request:
     branches: ["**"]
-  workflow_dispatch:  # bouton "Run workflow" manuel
+  workflow_dispatch:
 
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      PYTHONPATH: ${{ github.workspace }}   # <-- ajoute la racine du repo au PYTHONPATH
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
