@@ -3,162 +3,122 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>ITNR – Front (Compose)</title>
+  <title>ITNR – Recherche de vols</title>
   <style>
-    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; }
-    body { margin: 0; background: #0f172a; color: #e5e7eb; }
-    .wrap { max-width: 980px; margin: 32px auto; padding: 0 16px; }
-    header { display:flex; align-items:center; gap:12px; margin-bottom: 18px; }
-    header h1 { font-size: 22px; margin: 0; }
-    .card { background:#111827; border:1px solid #1f2937; border-radius:16px; padding:16px; box-shadow: 0 1px 12px rgba(0,0,0,.2); }
-    form { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:12px; }
-    label { font-size: 12px; color:#93c5fd; display:block; margin-bottom:6px; }
-    input, select, button { width:100%; padding:10px 12px; border-radius:12px; border:1px solid #374151; background:#0b1220; color:#e5e7eb; }
-    input:focus, select:focus { outline: 2px solid #2563eb; border-color:#2563eb; }
-    button { background:#1d4ed8; border:none; cursor:pointer; font-weight:600; }
-    button:hover { filter: brightness(1.08); }
-    .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:16px; margin-top:18px; }
-    .result h3 { margin:0 0 8px; font-size:16px; color:#93c5fd; }
-    .muted { color:#94a3b8; font-size:12px; }
-    .legs { margin-top:10px; font-size:13px; line-height:1.5; }
-    .pill { display:inline-block; background:#0b1220; border:1px solid #334155; padding:2px 8px; border-radius:999px; margin-right:6px; font-size:12px; }
-    .error { background:#7f1d1d; border:1px solid #ef4444; padding:10px; border-radius:12px; color:#fee2e2; margin-top:12px; }
-    footer { margin-top:20px; font-size:12px; color:#94a3b8; }
+    :root { --bg:#0f172a; --panel:#0b1220; --card:#111827; --muted:#94a3b8; --pri:#60a5fa; --accent:#1d4ed8; --border:#1f2937; --text:#e5e7eb; }
+    * { box-sizing: border-box; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; background:var(--bg); color:var(--text); }
+    header { position:sticky; top:0; background:linear-gradient(180deg,#0f172a,#0f172aeb); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:10px; z-index:100; }
+    header h1 { margin:0; font-size:16px; letter-spacing:.3px; }
+    nav a { color:var(--pri); text-decoration:none; font-weight:600; margin-left:12px; }
+    .wrap { max-width:980px; margin:0 auto; padding:24px 16px 80px; }
+    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
+    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; }
+    label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
+    input, select, button { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--text); }
+    button { background:var(--accent); border:0; font-weight:700; cursor:pointer; }
+    .row { display:grid; grid-template-columns: repeat(2, 1fr); gap:12px; }
+    pre { background:#0b1220; padding:12px; border-radius:12px; overflow:auto; border:1px solid var(--border); }
+    .muted { color:var(--muted); }
   </style>
 </head>
 <body>
+  <header>
+    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+      <path d="M3 6h10l2 3h6M3 18h10l2-3h6" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>
+    <h1>ITNR – Recherche de vols</h1>
+    <nav style="margin-left:auto">
+      <a href="chat.html">👋 Chat</a>
+    </nav>
+  </header>
+
   <div class="wrap">
-    <header>
-      <h1>ITNR – Recherche de vols (Docker Compose)</h1>
-    </header>
+    <div class="grid">
+      <div class="card">
+        <h2>Formulaire simple</h2>
+        <form id="form">
+          <div class="row">
+            <div>
+              <label>Ville de départ</label>
+              <input id="originCity" placeholder="Paris" required />
+            </div>
+            <div>
+              <label>Ville d'arrivée</label>
+              <input id="destinationCity" placeholder="Bangkok" required />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Date aller</label>
+              <input id="departureDate" type="date" required />
+            </div>
+            <div>
+              <label>Date retour</label>
+              <input id="returnDate" type="date" required />
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Adultes</label>
+              <input id="adults" type="number" min="1" value="1" />
+            </div>
+            <div>
+              <label>Escales max</label>
+              <select id="maxStops">
+                <option value="0">0 (direct)</option>
+                <option value="1" selected>1</option>
+                <option value="2">2</option>
+              </select>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label>Budget / personne (€)</label>
+              <input id="budget" type="number" min="0" step="1" placeholder="900" />
+            </div>
+            <div>
+              <label>&nbsp;</label>
+              <button type="submit">Rechercher</button>
+            </div>
+          </div>
+        </form>
+      </div>
 
-    <div class="card" style="margin-bottom:16px">
-      <form id="form">
-        <div>
-          <label>Ville de départ</label>
-          <input id="originCity" placeholder="Paris" required />
-        </div>
-        <div>
-          <label>Ville d'arrivée</label>
-          <input id="destinationCity" placeholder="Bangkok" required />
-        </div>
-        <div>
-          <label>Date aller</label>
-          <input id="departureDate" type="date" required />
-        </div>
-        <div>
-          <label>Date retour</label>
-          <input id="returnDate" type="date" required />
-        </div>
-        <div>
-          <label>Adultes</label>
-          <input id="adults" type="number" min="1" value="1" />
-        </div>
-        <div>
-          <label>Escales max</label>
-          <select id="maxStops">
-            <option value="0">0 (direct)</option>
-            <option value="1" selected>1</option>
-            <option value="2">2</option>
-          </select>
-        </div>
-        <div>
-          <label>Budget max / personne (EUR)</label>
-          <input id="budget" type="number" min="0" step="1" placeholder="900" />
-        </div>
-        <div style="display:flex; align-items:flex-end;">
-          <button type="submit">Rechercher</button>
-        </div>
-      </form>
-      <div id="err" class="error" style="display:none"></div>
+      <div class="card">
+        <h2>Résultats</h2>
+        <div class="muted">Affiche les cartes “moins cher / recommandé / direct”.</div>
+        <pre id="out"></pre>
+      </div>
     </div>
-
-    <div id="results" class="grid"></div>
-
-    <footer>Stack compose : front → Nginx (port 8080), API → FastAPI (port 8000)</footer>
   </div>
 
-  <script>
-    const API_URL = "https://itnr-fastapi-mvp.onrender.com/search";
-    const form = document.getElementById('form');
-    const results = document.getElementById('results');
-    const errBox = document.getElementById('err');
+<script>
+const API_URL = "https://itnr-fastapi-mvp.onrender.com/search"; // ← adapte si besoin
 
-    function el(tag, attrs={}, children=[]) {
-      const e = document.createElement(tag);
-      Object.entries(attrs).forEach(([k,v]) => e.setAttribute(k,v));
-      (Array.isArray(children)?children:[children]).forEach(c => {
-        if (c==null) return;
-        if (typeof c === 'string') e.appendChild(document.createTextNode(c));
-        else e.appendChild(c);
-      });
-      return e;
-    }
-
-    function hhmm(mins){
-      const h = Math.floor(mins/60), m = mins%60;
-      return h + 'h' + String(m).padStart(2,'0');
-    }
-
-    function card(title, data) {
-      const box = document.createElement('div');
-      box.className = 'card result';
-      box.appendChild(el('h3', {}, title));
-      if (!data) {
-        box.appendChild(el('div', {class:'muted'}, 'Aucune offre pour ce critère.'));
-        return box;
-      }
-      const top = el('div', {}, [
-        el('span', {class:'pill'}, `Prix total: €${data.price_total_eur}`),
-        el('span', {class:'pill'}, `€/pax: €${data.price_per_pax_eur}`),
-        el('span', {class:'pill'}, `Escales max: ${data.stops_max}`),
-        el('span', {class:'pill'}, `Durée: ${data.duration_total_hhmm || hhmm(data.duration_total_min)}`),
-      ]);
-      const carriers = el('div', {class:'muted', style:'margin-top:6px'}, `Compagnies: ${data.carriers.join(', ')}`);
-      const legs = el('div', {class:'legs'});
-      (data.legs || []).forEach((g, i) => {
-        legs.appendChild(el('div', {}, `(${i===0?'Aller':'Retour'}) ${g.from} → ${g.to} — départ ${g.dep}, arrivée ${g.arr} — escales: ${g.stops}`));
-      });
-      box.appendChild(top);
-      box.appendChild(carriers);
-      box.appendChild(legs);
-      return box;
-    }
-
-    form.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      errBox.style.display = 'none';
-      results.innerHTML = '';
-
-      const payload = {
-        originCity: document.getElementById('originCity').value.trim(),
-        destinationCity: document.getElementById('destinationCity').value.trim(),
-        departureDate: document.getElementById('departureDate').value,
-        returnDate: document.getElementById('returnDate').value,
-        passengers: { adults: parseInt(document.getElementById('adults').value || '1', 10), children: 0, infants: 0 },
-        cabin: "ECONOMY",
-        maxStops: parseInt(document.getElementById('maxStops').value, 10),
-      };
-      const budget = document.getElementById('budget').value;
-      if (budget) payload.budgetPerPaxEUR = parseFloat(budget);
-
-      try {
-        const res = await fetch(API_URL, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload),
-        });
-        const data = await res.json();
-        if (!res.ok) throw new Error(data.error || JSON.stringify(data));
-        const r = data.results || {};
-        results.appendChild(card('💸 Le moins cher', r.cheapest));
-        results.appendChild(card('👍 Recommandé', r.recommended));
-        results.appendChild(card('✈️ Direct', r.direct));
-      } catch (err) {
-        errBox.textContent = 'Erreur: ' + err.message;
-        errBox.style.display = 'block';
-      }
-    });
-  </script>
+document.getElementById('form').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const payload = {
+    originCity: document.getElementById('originCity').value.trim(),
+    destinationCity: document.getElementById('destinationCity').value.trim(),
+    departureDate: document.getElementById('departureDate').value,
+    returnDate: document.getElementById('returnDate').value,
+    passengers: { adults: parseInt(document.getElementById('adults').value || '1', 10), children: 0, infants: 0 },
+    cabin: "ECONOMY",
+    maxStops: parseInt(document.getElementById('maxStops').value, 10),
+  };
+  const budget = document.getElementById('budget').value;
+  if (budget) payload.budgetPerPaxEUR = parseFloat(budget);
+  const out = document.getElementById('out');
+  out.textContent = "Chargement...";
+  try {
+    const res = await fetch(API_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
+    const data = await res.json();
+    out.textContent = JSON.stringify(data, null, 2);
+  } catch (e) {
+    out.textContent = "Erreur: " + e.message;
+  }
+});
+</script>
 </body>
 </html>
