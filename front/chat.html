@@ -2,86 +2,64 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ITNR – Chat</title>
-  <style>
-    :root { --bg:#0f172a; --panel:#0b1220; --card:#111827; --muted:#94a3b8; --pri:#60a5fa; --accent:#1d4ed8; --border:#1f2937; --text:#e5e7eb; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; background:var(--bg); color:var(--text); }
-    header { position:sticky; top:0; background:linear-gradient(180deg,#0f172a,#0f172aeb); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:10px; z-index:100; }
-    header h1 { margin:0; font-size:16px; letter-spacing:.3px; }
-    .wrap { max-width:980px; margin:0 auto; padding:12px 16px 80px; }
-    .chat { display:flex; flex-direction:column; gap:12px; }
-    .bubble { padding:12px 14px; border-radius:14px; max-width:80%; box-shadow: 0 2px 16px rgba(0,0,0,.15); }
-    .me { align-self:flex-end; background:#1f2937; }
-    .bot { align-self:flex-start; background:var(--panel); border:1px solid var(--border); }
-    .muted { color:var(--muted); font-size:12px; }
-    .cards { display:grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap:14px; margin-top:8px; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:14px; }
-    .pill { display:inline-block; border:1px solid #334155; border-radius:999px; padding:2px 8px; margin-right:6px; font-size:12px; background:#0b1220; }
-    .legs { margin-top:8px; font-size:13px; line-height:1.5; }
-    .footer { position:fixed; left:0; right:0; bottom:0; background:linear-gradient(180deg,transparent, #0f172a 30%, #0f172a); padding:16px; }
-    form { display:flex; gap:8px; max-width:980px; margin:0 auto; }
-    input[type="text"] { flex:1; padding:12px 14px; border-radius:14px; border:1px solid var(--border); background:var(--panel); color:var(--text); }
-    button { padding:12px 16px; border-radius:12px; border:0; background:var(--accent); color:#fff; font-weight:600; cursor:pointer; }
-    button:disabled { opacity:.6; cursor:not-allowed; }
-    .loader { width:28px; height:28px; border:3px solid #1f2937; border-top-color: var(--pri); border-radius:50%; animation:spin 1s linear infinite; }
-    @keyframes spin { to { transform: rotate(360deg); } }
-    a.btn { display:inline-block; margin-top:10px; background:#0b1220; border:1px solid #334155; padding:8px 10px; border-radius:10px; text-decoration:none; color:var(--pri); font-weight:600; }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
 </head>
 <body>
-  <header>
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path d="M3 6h10l2 3h6M3 18h10l2-3h6" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
-    <h1>ITNR – Chat de recherche de vols</h1>
-    <div class="muted" style="margin-left:auto">MVP</div>
+  <header class="header">
+    <div class="container row">
+      <div class="brand">
+        <svg width="24" height="24" viewBox="0 0 24 24"><path d="M3 6h10l2 3h6M3 18h10l2-3h6" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        <h1>ITNR – Chat de recherche de vols</h1>
+      </div>
+      <nav class="nav">
+        <a href="index.html">🏠 Accueil</a>
+      </nav>
+    </div>
   </header>
 
-  <div class="wrap">
-    <div id="chat" class="chat">
-      <div class="bubble bot">
-        👋 Dis-moi par ex. <i>“Trouve-moi un AR Paris Bangkok entre janvier et février, ~3 semaines, le moins cher”.</i>
+  <main class="section">
+    <div class="container">
+      <div id="chat" class="chat">
+        <div class="bubble bot">
+          👋 Dis-moi par ex. <i>“Trouve-moi un AR Paris Bangkok entre janvier et février, ~3 semaines, le moins cher”.</i>
+        </div>
       </div>
     </div>
-  </div>
+  </main>
 
   <div class="footer">
-    <form id="form">
-      <input id="msg" type="text" placeholder="Écris ta demande..." autocomplete="off" required />
-      <button id="send" type="submit">Envoyer</button>
+    <form id="form" class="form-inline">
+      <input id="msg" class="input" type="text" placeholder="Écris ta demande..." autocomplete="off" required />
+      <button id="send" class="btn" type="submit">Envoyer</button>
     </form>
   </div>
 
-<script>
-const API_BASE = "https://itnr-fastapi-mvp.onrender.com"; // ← adapte si besoin
-const chatEl = document.getElementById('chat');
-const form = document.getElementById('form');
-const msgInput = document.getElementById('msg');
-const sendBtn = document.getElementById('send');
+  <div id="toast" class="toast" style="display:none"></div>
 
+<script>
+const API_BASE = window.API_BASE || "";
+
+const euro = v => "€" + (Math.round(v * 100) / 100).toFixed(2);
+const hhmm = mins => `${Math.floor(mins/60)}h${String(mins%60).padStart(2,"0")}`;
+const gflights = (origin, dest, dep, ret) =>
+  `https://www.google.com/travel/flights?q=${encodeURIComponent(`flights ${origin} to ${dest} ${dep} return ${ret}`)}&hl=fr`;
+
+function toast(msg, ms=2800) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(()=> t.style.display = 'none', ms);
+}
 function addBubble(text, who='bot') {
   const b = document.createElement('div');
   b.className = 'bubble ' + (who === 'me' ? 'me' : 'bot');
   b.innerHTML = text;
-  chatEl.appendChild(b);
+  document.getElementById('chat').appendChild(b);
   window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' });
   return b;
 }
-
-function hhmm(mins){
-  const h = Math.floor(mins/60), m = mins%60;
-  return h + 'h' + String(m).padStart(2,'0');
-}
-
-function euro(v){ return '€' + (Math.round(v*100)/100).toFixed(2); }
-
-function buildGoogleFlightsSearchURL(origin, dest, dep, ret) {
-  const q = `flights ${origin} to ${dest} ${dep} return ${ret}`;
-  return `https://www.google.com/travel/flights?q=${encodeURIComponent(q)}&hl=fr`;
-}
-
 function renderCards(result, meta){
   const grid = document.createElement('div'); grid.className = 'cards';
   const items = [
@@ -96,22 +74,22 @@ function renderCards(result, meta){
 
   for (const [title, data] of items) {
     const card = document.createElement('div'); card.className = 'card';
-    const h = document.createElement('div'); h.style.fontWeight='700'; h.style.marginBottom='6px'; h.textContent = title;
+    const h = document.createElement('div'); h.style.fontWeight='800'; h.style.marginBottom='6px'; h.textContent = title;
     card.appendChild(h);
 
     if (!data) {
-      const m = document.createElement('div'); m.className='muted'; m.textContent = 'Aucune offre trouvée.';
+      const m = document.createElement('div'); m.className='small'; m.textContent = 'Aucune offre trouvée.';
       card.appendChild(m);
       grid.appendChild(card);
       continue;
     }
     const top = document.createElement('div');
     top.innerHTML = `
-      <span class="pill">Total: ${euro(data.price_total_eur)}</span>
-      <span class="pill">€/pax: ${euro(data.price_per_pax_eur)}</span>
-      <span class="pill">Escales max: ${data.stops_max}</span>
-      <span class="pill">Durée: ${data.duration_total_hhmm || hhmm(data.duration_total_min)}</span>
-      <div class="muted" style="margin-top:6px">Compagnies: ${(data.carriers||[]).join(', ')}</div>
+      <span class="kpi">Total: ${euro(data.price_total_eur)}</span>
+      <span class="kpi">€/pax: ${euro(data.price_per_pax_eur)}</span>
+      <span class="kpi">Escales max: ${data.stops_max}</span>
+      <span class="kpi">Durée: ${data.duration_total_hhmm || hhmm(data.duration_total_min)}</span>
+      <div class="small" style="margin-top:6px">Compagnies: ${(data.carriers||[]).join(', ') || '—'}</div>
     `;
     card.appendChild(top);
 
@@ -123,9 +101,9 @@ function renderCards(result, meta){
     });
     card.appendChild(legs);
 
-    const link = document.createElement('a'); link.className='btn'; link.target='_blank';
+    const link = document.createElement('a'); link.className='btn-link'; link.target='_blank';
     link.textContent = 'Voir billets';
-    link.href = buildGoogleFlightsSearchURL(origin, dest, dep, ret);
+    link.href = gflights(origin, dest, dep, ret);
     card.appendChild(link);
 
     grid.appendChild(card);
@@ -133,12 +111,12 @@ function renderCards(result, meta){
   return grid;
 }
 
-form.addEventListener('submit', async (e)=>{
+document.getElementById('form').addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const text = msgInput.value.trim(); if (!text) return;
+  const text = document.getElementById('msg').value.trim(); if (!text) return;
   addBubble(text, 'me');
-  msgInput.value=''; msgInput.focus();
-  sendBtn.disabled = true;
+  document.getElementById('msg').value=''; document.getElementById('msg').focus();
+  const btn = document.getElementById('send'); btn.disabled = true;
   const loader = addBubble('<div class="loader"></div>');
 
   try {
@@ -166,22 +144,21 @@ form.addEventListener('submit', async (e)=>{
     const d2 = await r2.json();
     if (!r2.ok) throw new Error(d2.error || JSON.stringify(d2));
 
-    const parsedTxt = `🧭 Critères détectés: <b>${payload.originCity}</b> → <b>${payload.destinationCity}</b>, ` +
-                      `Aller: <b>${payload.departureDate}</b>, Retour: <b>${payload.returnDate}</b>, ` +
-                      `Pax: <b>${payload.passengers.adults}</b>, Escales max: <b>${payload.maxStops}</b>` +
-                      (payload.budgetPerPaxEUR ? `, Budget/pax: <b>${euro(payload.budgetPerPaxEUR)}</b>` : '');
     loader.outerHTML = '';
-    const wrap = document.createElement('div'); wrap.className = 'bubble bot';
-    wrap.innerHTML = parsedTxt;
+    const parsedTxt = `🧭 Critères détectés: <b>${payload.originCity}</b> → <b>${payload.destinationCity}</b>, `
+      + `Aller: <b>${payload.departureDate}</b>, Retour: <b>${payload.returnDate}</b>, `
+      + `Pax: <b>${payload.passengers.adults}</b>, Escales max: <b>${payload.maxStops}</b>`
+      + (payload.budgetPerPaxEUR ? `, Budget/pax: <b>${euro(payload.budgetPerPaxEUR)}</b>` : '')
+      + (d2.meta?.llm ? ` <span class="small">(moteur: ${d2.meta.llm})</span>` : '');
+    const wrap = addBubble(parsedTxt, 'bot');
     wrap.appendChild(renderCards(d2.results || {}, d2.meta || {}));
-    chatEl.appendChild(wrap);
     window.scrollTo({ top: document.body.scrollHeight, behavior:'smooth' });
-
   } catch (err) {
     loader.outerHTML = '';
     addBubble('⚠️ ' + (err?.message || err), 'bot');
+    toast("Erreur: " + (err?.message || err), 4000);
   } finally {
-    sendBtn.disabled = false;
+    btn.disabled = false;
   }
 });
 </script>
