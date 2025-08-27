@@ -1,0 +1,19 @@
+name: Deploy
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Trigger API deploy (Render)
+        if: ${{ secrets.RENDER_API_HOOK_URL != '' }}
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_API_HOOK_URL }}"
+      - name: Trigger Front deploy (Render)
+        if: ${{ secrets.RENDER_FRONT_HOOK_URL != '' }}
+        run: |
+          curl -fsS -X POST "${{ secrets.RENDER_FRONT_HOOK_URL }}"

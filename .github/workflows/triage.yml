@@ -1,0 +1,16 @@
+name: Project Automation
+
+on:
+  issues:
+    types: [opened, labeled]
+  pull_request_target:
+    types: [opened, labeled]
+
+jobs:
+  add-to-project:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/add-to-project@v1.0.2
+        with:
+          project-url: ${{ secrets.PROJECT_URL }}
+          github-token: ${{ secrets.ADD_TO_PROJECT_PAT }}
