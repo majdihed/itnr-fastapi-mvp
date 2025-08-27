@@ -6,7 +6,7 @@ from fastapi import APIRouter, HTTPException
 import httpx
 
 from .utils import rank_offers, count_stops, to_lite
-from .main import amadeus_token, city_to_iata, CURRENCY, AMADEUS_HOST
+from .core import amadeus_token, city_to_iata, CURRENCY, AMADEUS_HOST
 
 try:
     from openai import OpenAI
