@@ -1,4 +1,4 @@
-name: Deploy
+name: Deploy Render
 
 on:
   push:
@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Trigger API deploy (Render)
-        if: ${{ secrets.RENDER_API_HOOK_URL != '' }}
+        if: ${{ secrets.RENDER_API_HOOK_URL != 'https://api.render.com/deploy/srv-d2ms273uibrs73bpqung?key=nPBtCUmz6IY' }}
         run: |
           curl -fsS -X POST "${{ secrets.RENDER_API_HOOK_URL }}"
       - name: Trigger Front deploy (Render)
-        if: ${{ secrets.RENDER_FRONT_HOOK_URL != '' }}
+        if: ${{ secrets.RENDER_FRONT_HOOK_URL != 'https://api.render.com/deploy/srv-d2msceer433s73b1sp4g?key=B9Mqd7DPKrQ' }}
         run: |
           curl -fsS -X POST "${{ secrets.RENDER_FRONT_HOOK_URL }}"
