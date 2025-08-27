@@ -1,19 +1,24 @@
-import os
+# app/main.py
+import datetime as dt
+
+import httpx
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import JSONResponse
-from dotenv import load_dotenv
-import httpx
-import datetime as dt
+
+from .core import AMADEUS_HOST, CURRENCY, amadeus_token, city_to_iata
 from .schemas import SearchBody
-from .utils import count_stops, total_duration_minutes, rank_offers
-from .core import amadeus_token, city_to_iata, CURRENCY, AMADEUS_HOST  # <<< ici
+from .utils import count_stops, rank_offers
 
 load_dotenv()
+
 app = FastAPI(title="ITNR API")
+
 
 @app.get("/health")
 def health():
     return {"status": "ok"}
+
 
 def resolve_dates(body: SearchBody) -> tuple[str, str]:
     if body.departureDate and body.returnDate:
@@ -22,7 +27,11 @@ def resolve_dates(body: SearchBody) -> tuple[str, str]:
         d0 = dt.date.fromisoformat(body.period.start)
         d1 = d0 + dt.timedelta(days=int(body.period.durationDays))
         return d0.isoformat(), d1.isoformat()
-    raise HTTPException(400, "Dates invalides (départ/retour OU period.start+durationDays requis)")
+    raise HTTPException(
+        400,
+        "Dates invalides (départ/retour OU period.start+durationDays requis)",
+    )
+
 
 @app.post("/search")
 async def search(body: SearchBody):
@@ -32,7 +41,10 @@ async def search(body: SearchBody):
         dest = await city_to_iata(client, token, body.destinationCity)
         dep, ret = resolve_dates(body)
 
-        pax_total = max(1, body.passengers.adults + body.passengers.children + body.passengers.infants)
+        pax_total = max(
+            1,
+            body.passengers.adults + body.passengers.children + body.passengers.infants,
+        )
 
         params = {
             "originLocationCode": origin,
@@ -47,15 +59,18 @@ async def search(body: SearchBody):
             "max": 50,
             "travelClass": "ECONOMY",
         }
-        r = await client.get(
-            f"{AMADEUS_HOST}/v2/shopping/flight-offers",
-            params=params,
-            headers={"Authorization": f"Bearer {token}"},
-        )
         try:
+            r = await client.get(
+                f"{AMADEUS_HOST}/v2/shopping/flight-offers",
+                params=params,
+                headers={"Authorization": f"Bearer {token}"},
+            )
             r.raise_for_status()
         except httpx.HTTPStatusError as e:
-            return JSONResponse(status_code=e.response.status_code, content={"error": e.response.text})
+            return JSONResponse(
+                status_code=e.response.status_code,
+                content={"error": e.response.text},
+            )
 
         offers = r.json().get("data", [])
 
@@ -64,7 +79,10 @@ async def search(body: SearchBody):
             if count_stops(o) > body.maxStops:
                 continue
             price_per_pax = float(o["price"]["grandTotal"]) / pax_total
-            if body.budgetPerPaxEUR is not None and price_per_pax > body.budgetPerPaxEUR:
+            if (
+                body.budgetPerPaxEUR is not None
+                and price_per_pax > body.budgetPerPaxEUR
+            ):
                 continue
             filtered.append(o)
 
@@ -72,12 +90,17 @@ async def search(body: SearchBody):
         return {
             "results": ranked,
             "meta": {
-                "searched": {**params, "originCity": body.originCity, "destinationCity": body.destinationCity},
+                "searched": {
+                    **params,
+                    "originCity": body.originCity,
+                    "destinationCity": body.destinationCity,
+                },
                 "totalCandidates": len(offers),
                 "kept": len(filtered),
             },
         }
 
-# inclure le routeur chat APRES la création de app
-from .chat_router import router as chat_router   # <<< plus de boucle, car chat_router n’importe plus main.py
+
+# Import au top-level pour éviter E402 et ne plus créer de boucle
+from .chat_router import router as chat_router  # noqa: E402  (si tu veux vraiment éviter E402)
 app.include_router(chat_router)
