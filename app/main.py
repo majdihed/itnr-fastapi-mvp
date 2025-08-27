@@ -6,6 +6,7 @@ import httpx
 import datetime as dt
 from .schemas import SearchBody
 from .utils import count_stops, total_duration_minutes, rank_offers, to_lite
+from .chat_router import router as chat_router
 
 load_dotenv()
 
@@ -26,6 +27,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(chat_router)
 
 @app.get("/health")
 def health():
