@@ -8,20 +8,36 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
+  ci:
     runs-on: ubuntu-latest
     env:
-      PYTHONPATH: ${{ github.workspace }}   # <-- ajoute la racine du repo au PYTHONPATH
+      PYTHONPATH: ${{ github.workspace }}
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
           cache: "pip"
-      - name: Install deps
+
+      - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-          pip install pytest
-      - name: Run tests
-        run: pytest -q
+          if [ -f requirements-dev.txt ]; then pip install -r requirements-dev.txt; fi
+
+      - name: Ruff (lint)
+        uses: astral-sh/ruff-action@v3
+        with:
+          args: --output-format=github
+
+      - name: Type check (mypy)
+        run: |
+          if command -v mypy >/dev/null 2>&1; then mypy app || true; fi
+
+      - name: Security scan (bandit)
+        run: |
+          if command -v bandit >/dev/null 2>&1; then bandit -q -r app || true; fi
+
+      - name: Tests
+        run: pytest -q --maxfail=1 --disable-warnings
