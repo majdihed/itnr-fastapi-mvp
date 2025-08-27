@@ -2,121 +2,176 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>ITNR – Recherche de vols</title>
-  <style>
-    :root { --bg:#0f172a; --panel:#0b1220; --card:#111827; --muted:#94a3b8; --pri:#60a5fa; --accent:#1d4ed8; --border:#1f2937; --text:#e5e7eb; }
-    * { box-sizing: border-box; }
-    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Ubuntu, Cantarell, 'Helvetica Neue', Arial; background:var(--bg); color:var(--text); }
-    header { position:sticky; top:0; background:linear-gradient(180deg,#0f172a,#0f172aeb); border-bottom:1px solid var(--border); padding:12px 16px; display:flex; align-items:center; gap:10px; z-index:100; }
-    header h1 { margin:0; font-size:16px; letter-spacing:.3px; }
-    nav a { color:var(--pri); text-decoration:none; font-weight:600; margin-left:12px; }
-    .wrap { max-width:980px; margin:0 auto; padding:24px 16px 80px; }
-    .grid { display:grid; grid-template-columns: 1fr; gap:16px; }
-    .card { background:var(--card); border:1px solid var(--border); border-radius:16px; padding:16px; }
-    label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
-    input, select, button { width:100%; padding:12px 14px; border-radius:12px; border:1px solid var(--border); background:var(--panel); color:var(--text); }
-    button { background:var(--accent); border:0; font-weight:700; cursor:pointer; }
-    .row { display:grid; grid-template-columns: repeat(2, 1fr); gap:12px; }
-    pre { background:#0b1220; padding:12px; border-radius:12px; overflow:auto; border:1px solid var(--border); }
-    .muted { color:var(--muted); }
-  </style>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="config.js"></script>
 </head>
 <body>
-  <header>
-    <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
-      <path d="M3 6h10l2 3h6M3 18h10l2-3h6" stroke="#60a5fa" stroke-width="1.5" stroke-linecap="round"/>
-    </svg>
-    <h1>ITNR – Recherche de vols</h1>
-    <nav style="margin-left:auto">
-      <a href="chat.html">👋 Chat</a>
-    </nav>
+  <header class="header">
+    <div class="container row">
+      <div class="brand">
+        <svg width="24" height="24" viewBox="0 0 24 24"><path d="M3 6h10l2 3h6M3 18h10l2-3h6" stroke="#60a5fa" stroke-width="1.5" fill="none" stroke-linecap="round"/></svg>
+        <h1>ITNR – Recherche de vols</h1>
+      </div>
+      <nav class="nav">
+        <a href="chat.html">👋 Chat</a>
+      </nav>
+    </div>
   </header>
 
-  <div class="wrap">
-    <div class="grid">
-      <div class="card">
-        <h2>Formulaire simple</h2>
-        <form id="form">
-          <div class="row">
+  <main class="section">
+    <div class="container grid">
+      <section class="card">
+        <h2 style="margin-top:0">Formulaire simple</h2>
+        <form id="form" novalidate>
+          <div class="grid-2">
             <div>
               <label>Ville de départ</label>
-              <input id="originCity" placeholder="Paris" required />
+              <input id="originCity" class="input" placeholder="Paris" required />
             </div>
             <div>
               <label>Ville d'arrivée</label>
-              <input id="destinationCity" placeholder="Bangkok" required />
+              <input id="destinationCity" class="input" placeholder="Bangkok" required />
             </div>
           </div>
-          <div class="row">
+          <div class="grid-2" style="margin-top:12px">
             <div>
               <label>Date aller</label>
-              <input id="departureDate" type="date" required />
+              <input id="departureDate" class="input" type="date" required />
             </div>
             <div>
               <label>Date retour</label>
-              <input id="returnDate" type="date" required />
+              <input id="returnDate" class="input" type="date" required />
             </div>
           </div>
-          <div class="row">
+          <div class="grid-3" style="margin-top:12px">
             <div>
               <label>Adultes</label>
-              <input id="adults" type="number" min="1" value="1" />
+              <input id="adults" class="input" type="number" min="1" value="1" />
             </div>
             <div>
               <label>Escales max</label>
-              <select id="maxStops">
+              <select id="maxStops" class="input">
                 <option value="0">0 (direct)</option>
                 <option value="1" selected>1</option>
                 <option value="2">2</option>
               </select>
             </div>
-          </div>
-          <div class="row">
             <div>
               <label>Budget / personne (€)</label>
-              <input id="budget" type="number" min="0" step="1" placeholder="900" />
-            </div>
-            <div>
-              <label>&nbsp;</label>
-              <button type="submit">Rechercher</button>
+              <input id="budget" class="input" type="number" min="0" step="1" placeholder="900" />
             </div>
           </div>
+          <div style="margin-top:14px">
+            <button class="btn" type="submit">Rechercher</button>
+          </div>
         </form>
-      </div>
+      </section>
 
-      <div class="card">
-        <h2>Résultats</h2>
-        <div class="muted">Affiche les cartes “moins cher / recommandé / direct”.</div>
-        <pre id="out"></pre>
-      </div>
+      <section class="card">
+        <h2 style="margin-top:0">Résultats</h2>
+        <div id="hint" class="small">Les cartes “💸 Le moins cher / 👍 Recommandé / ✈️ Direct” apparaîtront ici.</div>
+        <div id="results" class="cards" style="margin-top:10px"></div>
+      </section>
     </div>
-  </div>
+  </main>
+
+  <div id="toast" class="toast" style="display:none"></div>
 
 <script>
-const API_URL = "https://itnr-fastapi-mvp.onrender.com/search"; // ← adapte si besoin
+const API_URL = (window.API_BASE || "") + "/search";
 
-document.getElementById('form').addEventListener('submit', async (e) => {
+const euro = v => "€" + (Math.round(v * 100) / 100).toFixed(2);
+const hhmm = mins => `${Math.floor(mins/60)}h${String(mins%60).padStart(2,"0")}`;
+const gflights = (origin, dest, dep, ret) =>
+  `https://www.google.com/travel/flights?q=${encodeURIComponent(`flights ${origin} to ${dest} ${dep} return ${ret}`)}&hl=fr`;
+
+function toast(msg, ms=2800) {
+  const t = document.getElementById('toast');
+  t.textContent = msg; t.style.display = 'block';
+  setTimeout(()=> t.style.display = 'none', ms);
+}
+
+function card(title, data, meta) {
+  const el = document.createElement('div'); el.className = 'card';
+  const h = document.createElement('div'); h.style.fontWeight='800'; h.textContent = title; el.appendChild(h);
+
+  if (!data) {
+    const m = document.createElement('div'); m.className = 'small'; m.textContent = 'Aucune offre trouvée.'; el.appendChild(m);
+    return el;
+  }
+
+  const top = document.createElement('div'); top.style.margin = '6px 0';
+  top.innerHTML = `
+    <span class="kpi">Total: ${euro(data.price_total_eur)}</span>
+    <span class="kpi">€/pax: ${euro(data.price_per_pax_eur)}</span>
+    <span class="kpi">Escales max: ${data.stops_max}</span>
+    <span class="kpi">Durée: ${data.duration_total_hhmm || hhmm(data.duration_total_min)}</span>
+    <div class="small" style="margin-top:6px">Compagnies: ${(data.carriers||[]).join(', ') || '—'}</div>
+  `;
+  el.appendChild(top);
+
+  const legs = document.createElement('div'); legs.className = 'legs';
+  (data.legs || []).forEach((g,i)=>{
+    const d = document.createElement('div');
+    d.textContent = `(${i===0?'Aller':'Retour'}) ${g.from} → ${g.to} — départ ${g.dep}, arrivée ${g.arr} — escales: ${g.stops}`;
+    legs.appendChild(d);
+  });
+  el.appendChild(legs);
+
+  const origin = meta?.searched?.originLocationCode || data?.legs?.[0]?.from || '';
+  const dest   = meta?.searched?.destinationLocationCode || data?.legs?.[0]?.to || '';
+  const dep    = meta?.searched?.departureDate || '';
+  const ret    = meta?.searched?.returnDate || '';
+
+  const a = document.createElement('a'); a.className = 'btn-link'; a.target = '_blank';
+  a.href = gflights(origin, dest, dep, ret);
+  a.textContent = 'Voir billets';
+  el.appendChild(a);
+
+  return el;
+}
+
+document.getElementById('form').addEventListener('submit', async (e)=>{
   e.preventDefault();
-  const payload = {
-    originCity: document.getElementById('originCity').value.trim(),
-    destinationCity: document.getElementById('destinationCity').value.trim(),
-    departureDate: document.getElementById('departureDate').value,
-    returnDate: document.getElementById('returnDate').value,
-    passengers: { adults: parseInt(document.getElementById('adults').value || '1', 10), children: 0, infants: 0 },
-    cabin: "ECONOMY",
-    maxStops: parseInt(document.getElementById('maxStops').value, 10),
-  };
+  const originCity = document.getElementById('originCity').value.trim();
+  const destinationCity = document.getElementById('destinationCity').value.trim();
+  const departureDate = document.getElementById('departureDate').value;
+  const returnDate = document.getElementById('returnDate').value;
+  const adults = parseInt(document.getElementById('adults').value || '1', 10);
+  const maxStops = parseInt(document.getElementById('maxStops').value, 10);
   const budget = document.getElementById('budget').value;
+
+  if (!originCity || !destinationCity || !departureDate || !returnDate) {
+    toast("Merci de compléter tous les champs requis.");
+    return;
+  }
+  const payload = {
+    originCity, destinationCity, departureDate, returnDate,
+    passengers: { adults, children: 0, infants: 0 },
+    cabin: "ECONOMY",
+    maxStops,
+  };
   if (budget) payload.budgetPerPaxEUR = parseFloat(budget);
-  const out = document.getElementById('out');
-  out.textContent = "Chargement...";
+
+  const btn = e.submitter; btn.disabled = true; btn.textContent = "Recherche...";
+  const results = document.getElementById('results');
+  const hint = document.getElementById('hint');
+  results.innerHTML = ""; hint.textContent = "Chargement des meilleures options...";
   try {
     const res = await fetch(API_URL, { method: 'POST', headers: {'Content-Type':'application/json'}, body: JSON.stringify(payload) });
     const data = await res.json();
-    out.textContent = JSON.stringify(data, null, 2);
-  } catch (e) {
-    out.textContent = "Erreur: " + e.message;
+    if (!res.ok) throw new Error(data.error || data.detail || JSON.stringify(data));
+    results.appendChild(card("💸 Le moins cher", data.results.cheapest, data.meta));
+    results.appendChild(card("👍 Recommandé", data.results.recommended, data.meta));
+    results.appendChild(card("✈️ Direct", data.results.direct, data.meta));
+    hint.textContent = `Trouvés: ${data.meta.kept}/${data.meta.totalCandidates} candidats — moteur: ${data.meta.llm || 'ok'}`;
+  } catch (err) {
+    hint.textContent = "Une erreur est survenue.";
+    toast("Erreur de recherche : " + (err?.message || err), 4000);
+  } finally {
+    btn.disabled = false; btn.textContent = "Rechercher";
   }
 });
 </script>
