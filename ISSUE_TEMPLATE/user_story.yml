@@ -1,0 +1,34 @@
+name: User Story
+description: Fonctionnalité utilisateur
+labels: ["type: story"]
+body:
+  - type: textarea
+    id: as_a
+    attributes:
+      label: En tant que
+      placeholder: "voyageur..."
+    validations:
+      required: true
+  - type: textarea
+    id: i_want
+    attributes:
+      label: Je veux
+      placeholder: "écrire 'Trouve moi un AR Paris Bangkok...'"
+    validations:
+      required: true
+  - type: textarea
+    id: so_that
+    attributes:
+      label: Afin de
+      placeholder: "obtenir les meilleures options"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: Critères d'acceptation
+      placeholder: "- Le message naturel est parsé en critères\n- Les résultats s'affichent en 3 cartes"
+  - type: textarea
+    id: tech
+    attributes:
+      label: Notes techniques / Liens
