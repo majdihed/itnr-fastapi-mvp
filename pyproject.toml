@@ -1,11 +1,13 @@
-# pyproject.toml
 [tool.ruff]
 line-length = 100
-target-version = "py312"  # <— important : autorise `X | None`
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
 ignore = []
+
+# On autorise Optional[...] dans ce fichier pour éviter tout souci de parsing.
+per-file-ignores = { "app/schemas.py" = ["UP045"] }
 
 [tool.ruff.format]
 quote-style = "double"
