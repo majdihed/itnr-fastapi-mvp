@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from typing import Any, dict
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -19,8 +19,21 @@ except Exception as exc:
 router = APIRouter(prefix="/chat", tags=["chat"])
 
 MONTHS_FR = {
-    "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
-    "juillet": 7, "août": 8, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12, "decembre": 12,
+    "janvier": 1,
+    "février": 2,
+    "fevrier": 2,
+    "mars": 3,
+    "avril": 4,
+    "mai": 5,
+    "juin": 6,
+    "juillet": 7,
+    "août": 8,
+    "aout": 8,
+    "septembre": 9,
+    "octobre": 10,
+    "novembre": 11,
+    "décembre": 12,
+    "decembre": 12,
 }
 
 
@@ -62,19 +75,22 @@ def _parse_flex(text: str) -> int | None:
 
 
 def _parse_cities(text: str) -> tuple[str | None, str | None]:
-    m = re.search(
-        r"(?:AR|aller[ -]?retour)\s+([A-ZÉÈÊÎÔÛÂ][\wé\-']+)\s+(?:vers|->|→|à|a)?\s*([A-ZÉÈÊÎÔÛÂ][\wé\-']+)",
-        text,
-        re.I,
+    pat1 = (
+        r"(?:AR|aller[ -]?retour)\s+([A-ZÉÈÊÎÔÛÂ][\wé\-']+)"
+        r"\s+(?:vers|->|→|à|a)?\s*([A-ZÉÈÊÎÔÛÂ][\wé\-']+)"
     )
+    m = re.search(pat1, text, re.I)
     if m:
         return m.group(1), m.group(2)
-    m = re.search(
-        r"\b([A-ZÉÈÊÎÔÛÂ][\wé\-']+)\s+(?:vers|->|→|à|a)\s+([A-ZÉÈÊÎÔÛÂ][\wé\-']+)\b",
-        text,
+
+    pat2 = (
+        r"\b([A-ZÉÈÊÎÔÛÂ][\wé\-']+)\s+(?:vers|->|→|à|a)\s+"
+        r"([A-ZÉÈÊÎÔÛÂ][\wé\-']+)\b"
     )
+    m = re.search(pat2, text)
     if m:
         return m.group(1), m.group(2)
+
     caps = re.findall(r"\b([A-Z][a-zA-Zéèêàîôûäëïöü\-']{2,})\b", text)
     return (caps[0], caps[1]) if len(caps) >= 2 else (None, None)
 
@@ -89,22 +105,24 @@ def _parse_dates(text: str) -> dict[str, Any]:
         d1 = dateparser.parse(m.group(1), languages=["fr"])
         d2 = dateparser.parse(m.group(2), languages=["fr"])
         if d1 and d2:
-            return {"departureDate": d1.date().isoformat(), "returnDate": d2.date().isoformat()}
+            return {
+                "departureDate": d1.date().isoformat(),
+                "returnDate": d2.date().isoformat(),
+            }
 
-    m = re.search(r"entre\s+([a-zéèêàîôûç]+)\s+et\s+([a-zéèêàîôûç]+)\s+(\d{4})", text, re.I)
+    pat3 = r"entre\s+([a-zéèêàîôûç]+)\s+et\s+([a-zéèêàîôûç]+)\s+(\d{4})"
+    m = re.search(pat3, text, re.I)
     if m:
-        months = {
-            "janvier": 1, "février": 2, "fevrier": 2, "mars": 3, "avril": 4, "mai": 5, "juin": 6,
-            "juillet": 7, "août": 8, "aout": 8, "septembre": 9, "octobre": 10, "novembre": 11, "décembre": 12,
-            "decembre": 12,
-        }
+        months = MONTHS_FR
         m1, m2, year = m.group(1).lower(), m.group(2).lower(), int(m.group(3))
         if m1 in months and m2 in months:
             start = dt.date(year, months[m1], 1)
             m_dur = re.search(r"(\d+)\s*(?:semaines?|jours?)", text, re.I)
-            dur = int(m_dur.group(1)) * 7 if m_dur and "semaine" in m_dur.group(0).lower() else (
-                int(m_dur.group(1)) if m_dur else 21
-            )
+            if m_dur:
+                raw = m_dur.group(1)
+                dur = int(raw) * 7 if "semaine" in m_dur.group(0).lower() else int(raw)
+            else:
+                dur = 21
             return {"period": {"start": start.isoformat(), "durationDays": dur}}
 
     iso = re.findall(r"\d{4}-\d{2}-\d{2}", text)
@@ -114,7 +132,8 @@ def _parse_dates(text: str) -> dict[str, Any]:
 
 
 def _complete_dates(parsed: dict) -> None:
-    if "period" in parsed and not (parsed.get("departureDate") and parsed.get("returnDate")):
+    has_exact = parsed.get("departureDate") and parsed.get("returnDate")
+    if "period" in parsed and not has_exact:
         d0 = dt.date.fromisoformat(parsed["period"]["start"])
         dur = int(parsed["period"]["durationDays"])
         parsed["departureDate"] = d0.isoformat()
@@ -149,20 +168,30 @@ async def chat_query(payload: dict):
     parsed = _heuristic_parse(user_msg)
 
     # Mode découverte si pas de destination et intention soleil/budget/mois
-    wants_sun = bool(re.search(r"\bsoleil|plage|ensoleill|chaud", user_msg, re.I))
+    sun_rx = r"\b(?:soleil|plage|ensoleill|chaud)"
+    wants_sun = bool(re.search(sun_rx, user_msg, re.I))
     has_dest = bool(parsed.get("destinationCity"))
     if not has_dest and (wants_sun or parsed.get("budgetPerPaxEUR") or parsed.get("period")):
-        need = []
+        need: list[str] = []
         if not parsed.get("originCity"):
             need.append("originCity")
-        if not (parsed.get("departureDate") and parsed.get("returnDate")) and not parsed.get("period"):
+        has_dates = parsed.get("departureDate") and parsed.get("returnDate")
+        if not has_dates and not parsed.get("period"):
             need.append("dates (aller/retour) ou period.start + durationDays")
         if need:
-            return {"ask": "Pour te proposer des destinations soleil, j’ai besoin de :", "need": need, "mode": "discover"}
+            return {
+                "ask": (
+                    "Pour te proposer des destinations soleil, "
+                    "j’ai besoin de :"
+                ),
+                "need": need,
+                "mode": "discover",
+            }
 
         body: dict[str, Any] = {
-            "originCity": parsed["originCity"] or "Paris",
-            "passengers": parsed.get("passengers") or {"adults": 1, "children": 0, "infants": 0},
+            "originCity": parsed.get("originCity") or "Paris",
+            "passengers": parsed.get("passengers")
+            or {"adults": 1, "children": 0, "infants": 0},
             "maxStops": parsed.get("maxStops", 1),
             "budgetPerPaxEUR": parsed.get("budgetPerPaxEUR"),
         }
@@ -172,10 +201,10 @@ async def chat_query(payload: dict):
             body["departureDate"] = parsed["departureDate"]
             body["returnDate"] = parsed["returnDate"]
 
-        # appelle directement la logique /discover (sans HTTP)
+        # appelle directement /discover sans HTTP
         return {"mode": "discover", **(await discover_fn(body))}
 
-    # Sinon: recherche classique AR destination connue
+    # Sinon: recherche destination connue
     pax_total = max(
         1,
         parsed.get("passengers", {}).get("adults", 1)
@@ -185,8 +214,16 @@ async def chat_query(payload: dict):
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         token = await amadeus_token(client)
-        origin = await city_to_iata(client, token, parsed.get("originCity") or "Paris")
-        dest = await city_to_iata(client, token, parsed.get("destinationCity") or "Bangkok")
+        origin = await city_to_iata(
+            client,
+            token,
+            parsed.get("originCity") or "Paris",
+        )
+        dest = await city_to_iata(
+            client,
+            token,
+            parsed.get("destinationCity") or "Bangkok",
+        )
         params = {
             "originLocationCode": origin,
             "destinationLocationCode": dest,
@@ -208,11 +245,12 @@ async def chat_query(payload: dict):
             )
             r.raise_for_status()
         except httpx.HTTPStatusError as exc:
-            raise HTTPException(exc.response.status_code, f"Amadeus error: {exc.response.text[:200]}") from exc
+            msg = f"Amadeus error: {exc.response.text[:200]}"
+            raise HTTPException(exc.response.status_code, msg) from exc
 
         offers = r.json().get("data", []) or []
 
-    filtered = []
+    filtered: list[dict[str, Any]] = []
     for o in offers:
         if count_stops(o) > parsed.get("maxStops", 1):
             continue
@@ -232,5 +270,10 @@ async def chat_query(payload: dict):
         "recommended": _lite(ranked.get("recommended")),
         "direct": _lite(ranked.get("direct")),
     }
-    meta = {"parsed": parsed, "kept": len(filtered), "total": len(offers), "llm": "heuristic"}
+    meta = {
+        "parsed": parsed,
+        "kept": len(filtered),
+        "total": len(offers),
+        "llm": "heuristic",
+    }
     return {"results": results, "meta": meta}
