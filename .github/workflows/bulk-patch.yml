@@ -1,5 +1,4 @@
 name: Bulk Patch (CI & Lint Fix)
-
 on:
   workflow_dispatch:
 
@@ -12,493 +11,237 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Apply files
-        shell: bash
+      - name: Ensure pyproject.toml
         run: |
-          set -euo pipefail
-          mkdir -p app tests .github/workflows
+          cat > pyproject.toml <<EOF
+          [tool.ruff]
+          line-length = 100
+          target-version = "py312"
 
-          cat > pyproject.toml <<'PY'
-[tool.ruff]
-line-length = 100
-target-version = "py312"
+          [tool.ruff.lint]
+          select = ["E", "F", "I", "UP", "B"]
+          ignore = []
+          per-file-ignores = { "app/schemas.py" = ["UP045"] }
 
-[tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
-ignore = []
-per-file-ignores = { "app/schemas.py" = ["UP045"] }
+          [tool.ruff.format]
+          quote-style = "double"
+          EOF
 
-[tool.ruff.format]
-quote-style = "double"
-PY
+      - name: Ensure requirements.txt entries
+        run: |
+          touch requirements.txt
+          for pkg in \
+            "fastapi==0.112.2" \
+            "uvicorn[standard]==0.30.6" \
+            "httpx==0.27.2" \
+            "python-dotenv==1.0.1" \
+            "pydantic==2.9.2" \
+            "dateparser==1.2.0" \
+            "pytest==8.3.2" \
+            "pytest-asyncio==0.23.8"
+          do
+            grep -q "^${pkg%%==*}==" requirements.txt || echo "$pkg" >> requirements.txt
+          done
 
-          # --- requirements.txt (ajoute tests & dateparser si absents) ---
-          if [ -f requirements.txt ]; then
-            cp requirements.txt requirements.txt.bak
-            awk 'BEGIN{seen_fastapi=0;seen_uvicorn=0;seen_httpx=0;seen_dotenv=0;seen_pyd=0;seen_datep=0;seen_pytest=0;seen_pytestasync=0}
-              {print; if($0 ~ /^fastapi==/) seen_fastapi=1;
-                     if($0 ~ /^uvicorn\[standard]==/) seen_uvicorn=1;
-                     if($0 ~ /^httpx==/) seen_httpx=1;
-                     if($0 ~ /^python-dotenv==/) seen_dotenv=1;
-                     if($0 ~ /^pydantic==/) seen_pyd=1;
-                     if($0 ~ /^dateparser==/) seen_datep=1;
-                     if($0 ~ /^pytest==/) seen_pytest=1;
-                     if($0 ~ /^pytest-asyncio==/) seen_pytestasync=1;}
-              END{
-                if(!seen_fastapi) print "fastapi==0.112.2";
-                if(!seen_uvicorn) print "uvicorn[standard]==0.30.6";
-                if(!seen_httpx) print "httpx==0.27.2";
-                if(!seen_dotenv) print "python-dotenv==1.0.1";
-                if(!seen_pyd) print "pydantic==2.9.2";
-                if(!seen_datep) print "dateparser==1.2.0";
-                if(!seen_pytest) print "pytest==8.3.2";
-                if(!seen_pytestasync) print "pytest-asyncio==0.23.8";
-              }' requirements.txt.bak > requirements.txt
-          else
-            cat > requirements.txt <<'REQ'
-fastapi==0.112.2
-uvicorn[standard]==0.30.6
-httpx==0.27.2
-python-dotenv==1.0.1
-pydantic==2.9.2
-dateparser==1.2.0
-pytest==8.3.2
-pytest-asyncio==0.23.8
-REQ
-          fi
-
-          # --- CI de base ---
+      - name: Write CI workflow
+        run: |
           mkdir -p .github/workflows
-          cat > .github/workflows/ci.yml <<'YML'
-name: CI
+          cat > .github/workflows/ci.yml <<EOF
+          name: CI
+          on:
+            push:
+              branches: [ "main" ]
+            pull_request:
+              branches: [ "main" ]
+          jobs:
+            lint:
+              runs-on: ubuntu-latest
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: "3.12"
+                - name: Ruff Lint
+                  uses: astral-sh/ruff-action@v3
+                  with:
+                    src: "./"
+                    args: "check ."
+            test:
+              runs-on: ubuntu-latest
+              needs: lint
+              steps:
+                - uses: actions/checkout@v4
+                - uses: actions/setup-python@v5
+                  with:
+                    python-version: "3.12"
+                - name: Install dependencies
+                  run: |
+                    python -m pip install --upgrade pip
+                    pip install -r requirements.txt
+                - name: Run pytest
+                  env:
+                    AMADEUS_CLIENT_ID: "dummy"
+                    AMADEUS_CLIENT_SECRET: "dummy"
+                    AMADEUS_HOST: "https://example.invalid"
+                  run: |
+                    pytest -q
+          EOF
 
-on:
-  push:
-    branches: [ "main" ]
-  pull_request:
-    branches: [ "main" ]
-
-jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Ruff Lint
-        uses: astral-sh/ruff-action@v3
-        with:
-          src: "./"
-          args: "check ."
-
-  test:
-    runs-on: ubuntu-latest
-    needs: lint
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - name: Install dependencies
+      - name: Patch app/schemas.py
         run: |
-          python -m pip install --upgrade pip
-          pip install -r requirements.txt
-      - name: Run pytest
-        env:
-          AMADEUS_CLIENT_ID: "dummy"
-          AMADEUS_CLIENT_SECRET: "dummy"
-          AMADEUS_HOST: "https://example.invalid"
+          mkdir -p app
+          cat > app/schemas.py <<'EOF'
+          from __future__ import annotations
+          from typing import Optional
+          from pydantic import BaseModel, Field
+
+          class Period(BaseModel):
+              start: str
+              durationDays: int
+
+          class Passengers(BaseModel):
+              adults: int = 1
+              children: int = 0
+              infants: int = 0
+
+          class SearchBody(BaseModel):
+              originCity: str
+              destinationCity: Optional[str] = None
+              departureDate: Optional[str] = None
+              returnDate: Optional[str] = None
+              period: Optional[Period] = None
+              passengers: Passengers = Field(default_factory=Passengers)
+              maxStops: int = 1
+              budgetPerPaxEUR: Optional[float] = None
+              flexDays: Optional[int] = None
+          EOF
+
+      - name: Patch app/utils.py
         run: |
-          pytest -q
-YML
+          cat > app/utils.py <<'EOF'
+          from __future__ import annotations
+          import re
+          from typing import Any
+          def _parse_iso_duration(d: str) -> int:
+              if not d or not d.startswith("PT"):
+                  return 0
+              hours = 0
+              mins = 0
+              m = re.search(r"(\d+)H", d)
+              if m:
+                  hours = int(m.group(1))
+              m = re.search(r"(\d+)M", d)
+              if m:
+                  mins = int(m.group(1))
+              return hours * 60 + mins
+          def total_duration_minutes(offer: dict[str, Any]) -> int:
+              total = 0
+              for itin in offer.get("itineraries", []):
+                  total += _parse_iso_duration(itin.get("duration", "PT0M"))
+              return total
+          def count_stops(offer: dict[str, Any]) -> int:
+              stops = 0
+              for itin in offer.get("itineraries", []):
+                  segs = itin.get("segments", []) or []
+                  s = max(0, len(segs) - 1)
+                  stops = max(stops, s)
+              return stops
+          def _price(offer: dict[str, Any]) -> float:
+              try:
+                  return float(offer.get("price", {}).get("grandTotal", "0"))
+              except Exception:
+                  return 0.0
+          def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any] | None]:
+              if not offers:
+                  return {"cheapest": None, "recommended": None, "direct": None}
+              cheapest = min(offers, key=_price)
+              direct_candidates = [o for o in offers if count_stops(o) == 0]
+              direct = min(direct_candidates, key=_price) if direct_candidates else None
+              prices = [_price(o) for o in offers]
+              durs = [total_duration_minutes(o) for o in offers]
+              pmin, pmax = min(prices), max(prices)
+              dmin, dmax = min(durs), max(durs)
+              def norm(x: float, lo: float, hi: float) -> float:
+                  return 0.5 if hi <= lo else (x - lo) / (hi - lo)
+              best = None
+              best_score = -1.0
+              for o in offers:
+                  pn = norm(_price(o), pmin, pmax)
+                  dn = norm(total_duration_minutes(o), dmin, dmax)
+                  score = 0.6 * (1 - pn) + 0.4 * (1 - dn)
+                  if score > best_score:
+                      best = o
+                      best_score = score
+              return {"cheapest": cheapest, "recommended": best, "direct": direct}
+          def to_hhmm(mins: int) -> str:
+              h = mins // 60
+              m = mins % 60
+              return f"{h}h{m:02}"
+          def to_lite(offer: dict[str, Any], pax_total: int) -> dict[str, Any]:
+              price = _price(offer)
+              dur = total_duration_minutes(offer)
+              carriers: list[str] = []
+              legs: list[dict[str, Any]] = []
+              for itin in offer.get("itineraries", []):
+                  segs = itin.get("segments", []) or []
+                  if not segs:
+                      continue
+                  first = segs[0]["departure"]["iataCode"]
+                  last = segs[-1]["arrival"]["iataCode"]
+                  dep = segs[0]["departure"]["at"]
+                  arr = segs[-1]["arrival"]["at"]
+                  for s in segs:
+                      c = s.get("carrierCode")
+                      if c and c not in carriers:
+                          carriers.append(c)
+                  legs.append({"from": first, "to": last, "dep": dep, "arr": arr, "stops": max(0, len(segs) - 1)})
+              return {
+                  "price_total_eur": round(price, 2),
+                  "price_per_pax_eur": round(price / max(1, pax_total), 2),
+                  "duration_total_min": dur,
+                  "duration_total_hhmm": to_hhmm(dur),
+                  "stops_max": count_stops(offer),
+                  "carriers": carriers,
+                  "legs": legs,
+              }
+          EOF
 
-          # --- app/schemas.py (Optional[...] pour compat max, imports triés) ---
-          cat > app/schemas.py <<'PY'
-from __future__ import annotations
-
-from typing import Optional
-
-from pydantic import BaseModel, Field
-
-
-class Period(BaseModel):
-    start: str
-    durationDays: int
-
-
-class Passengers(BaseModel):
-    adults: int = 1
-    children: int = 0
-    infants: int = 0
-
-
-class SearchBody(BaseModel):
-    originCity: str
-    destinationCity: Optional[str] = None
-    departureDate: Optional[str] = None
-    returnDate: Optional[str] = None
-    period: Optional[Period] = None
-    passengers: Passengers = Field(default_factory=Passengers)
-    maxStops: int = 1
-    budgetPerPaxEUR: Optional[float] = None
-    flexDays: Optional[int] = None
-PY
-
-          # --- app/utils.py (imports triés + generics natifs) ---
-          cat > app/utils.py <<'PY'
-from __future__ import annotations
-
-import re
-from typing import Any
-
-
-def _parse_iso_duration(d: str) -> int:
-    if not d or not d.startswith("PT"):
-        return 0
-    hours = 0
-    mins = 0
-    m = re.search(r"(\\d+)H", d)
-    if m:
-        hours = int(m.group(1))
-    m = re.search(r"(\\d+)M", d)
-    if m:
-        mins = int(m.group(1))
-    return hours * 60 + mins
-
-
-def total_duration_minutes(offer: dict[str, Any]) -> int:
-    total = 0
-    for itin in offer.get("itineraries", []):
-        total += _parse_iso_duration(itin.get("duration", "PT0M"))
-    return total
-
-
-def count_stops(offer: dict[str, Any]) -> int:
-    stops = 0
-    for itin in offer.get("itineraries", []):
-        segs = itin.get("segments", []) or []
-        s = max(0, len(segs) - 1)
-        stops = max(stops, s)
-    return stops
-
-
-def _price(offer: dict[str, Any]) -> float:
-    try:
-        return float(offer.get("price", {}).get("grandTotal", "0"))
-    except Exception:
-        return 0.0
-
-
-def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any] | None]:
-    if not offers:
-        return {"cheapest": None, "recommended": None, "direct": None}
-
-    cheapest = min(offers, key=_price)
-    direct_candidates = [o for o in offers if count_stops(o) == 0]
-    direct = min(direct_candidates, key=_price) if direct_candidates else None
-
-    prices = [_price(o) for o in offers]
-    durs = [total_duration_minutes(o) for o in offers]
-    pmin, pmax = min(prices), max(prices)
-    dmin, dmax = min(durs), max(durs)
-
-    def norm(x: float, lo: float, hi: float) -> float:
-        return 0.5 if hi <= lo else (x - lo) / (hi - lo)
-
-    best = None
-    best_score = -1.0
-    for o in offers:
-        pn = norm(_price(o), pmin, pmax)
-        dn = norm(total_duration_minutes(o), dmin, dmax)
-        score = 0.6 * (1 - pn) + 0.4 * (1 - dn)
-        if score > best_score:
-            best = o
-            best_score = score
-
-    return {"cheapest": cheapest, "recommended": best, "direct": direct}
-
-
-def to_hhmm(mins: int) -> str:
-    h = mins // 60
-    m = mins % 60
-    return f"{h}h{m:02}"
-
-
-def to_lite(offer: dict[str, Any], pax_total: int) -> dict[str, Any]:
-    price = _price(offer)
-    dur = total_duration_minutes(offer)
-    carriers: list[str] = []
-    legs: list[dict[str, Any]] = []
-
-    for itin in offer.get("itineraries", []):
-        segs = itin.get("segments", []) or []
-        if not segs:
-            continue
-        first = segs[0]["departure"]["iataCode"]
-        last = segs[-1]["arrival"]["iataCode"]
-        dep = segs[0]["departure"]["at"]
-        arr = segs[-1]["arrival"]["at"]
-        for s in segs:
-            c = s.get("carrierCode")
-            if c and c not in carriers:
-                carriers.append(c)
-        legs.append({"from": first, "to": last, "dep": dep, "arr": arr, "stops": max(0, len(segs) - 1)})
-
-    return {
-        "price_total_eur": round(price, 2),
-        "price_per_pax_eur": round(price / max(1, pax_total), 2),
-        "duration_total_min": dur,
-        "duration_total_hhmm": to_hhmm(dur),
-        "stops_max": count_stops(offer),
-        "carriers": carriers,
-        "legs": legs,
-    }
-PY
-
-          # --- app/main.py (imports triés + CORS + request-id + lignes <100) ---
-          cat > app/main.py <<'PY'
-from __future__ import annotations
-
-import logging
-import os
-import uuid
-
-import httpx
-from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
-
-from .chat_router import router as chat_router
-from .core import AMADEUS_HOST, CURRENCY, amadeus_token, city_to_iata
-from .discover_router import router as discover_router
-from .schemas import SearchBody
-from .utils import count_stops, rank_offers, to_lite
-
-load_dotenv()
-
-app = FastAPI(title="ITNR API")
-
-logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
-
-
-@app.middleware("http")
-async def add_request_id(request, call_next):
-    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
-    response = await call_next(request)
-    response.headers["X-Request-ID"] = rid
-    return response
-
-
-_allowed = os.getenv("ALLOWED_ORIGINS", "")
-origins = [o.strip() for o in _allowed.split(",") if o.strip()]
-if not origins:
-    origins = ["*"]
-
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=origins,
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-app.include_router(chat_router)
-app.include_router(discover_router)
-
-
-@app.get("/health")
-def health():
-    return {"status": "ok"}
-
-
-@app.get("/locations")
-async def locations(q: str):
-    if not q or len(q) < 2:
-        return {"data": []}
-
-    async with httpx.AsyncClient(timeout=10.0) as client:
-        token = await amadeus_token(client)
-        r = await client.get(
-            f"{AMADEUS_HOST}/v1/reference-data/locations",
-            params={
-                "subType": "CITY,AIRPORT",
-                "keyword": q,
-                "sort": "analytics.travelers.score",
-            },
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        try:
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            msg = f"Amadeus locations error: {e.response.text[:200]}"
-            raise HTTPException(e.response.status_code, msg) from e
-
-        data = r.json().get("data", []) or []
-        out = []
-        for x in data[:10]:
-            out.append(
-                {
-                    "iataCode": x.get("iataCode"),
-                    "name": x.get("name"),
-                    "subType": x.get("subType"),
-                    "cityName": (x.get("address") or {}).get("cityName"),
-                    "country": (x.get("address") or {}).get("countryName"),
-                }
-            )
-        return {"data": out}
-
-
-def _resolve_dates(body: SearchBody) -> tuple[str, str]:
-    if body.departureDate and body.returnDate:
-        return body.departureDate, body.returnDate
-    if body.period:
-        import datetime as dt
-        d0 = dt.date.fromisoformat(body.period.start)
-        d1 = d0 + dt.timedelta(days=int(body.period.durationDays))
-        return d0.isoformat(), d1.isoformat()
-    raise HTTPException(
-        400,
-        "Dates invalides (départ/retour OU period.start+durationDays requis)",
-    )
-
-
-@app.post("/search")
-async def search(body: SearchBody):
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        token = await amadeus_token(client)
-        origin = await city_to_iata(client, token, body.originCity)
-        dest_city = body.destinationCity or ""
-        if not dest_city:
-            raise HTTPException(400, "destinationCity manquante")
-        dest = await city_to_iata(client, token, dest_city)
-        dep, ret = _resolve_dates(body)
-
-        pax_total = max(
-            1,
-            body.passengers.adults
-            + body.passengers.children
-            + body.passengers.infants,
-        )
-
-        params = {
-            "originLocationCode": origin,
-            "destinationLocationCode": dest,
-            "departureDate": dep,
-            "returnDate": ret,
-            "adults": body.passengers.adults or 1,
-            "children": body.passengers.children or 0,
-            "infants": body.passengers.infants or 0,
-            "currencyCode": CURRENCY,
-            "nonStop": "false",
-            "max": 50,
-            "travelClass": "ECONOMY",
-        }
-        r = await client.get(
-            f"{AMADEUS_HOST}/v2/shopping/flight-offers",
-            params=params,
-            headers={"Authorization": f"Bearer {token}"},
-        )
-        try:
-            r.raise_for_status()
-        except httpx.HTTPStatusError as e:
-            return JSONResponse(
-                status_code=e.response.status_code,
-                content={"error": e.response.text},
-            )
-
-        offers = r.json().get("data", []) or []
-
-        filtered = []
-        for o in offers:
-            if count_stops(o) > body.maxStops:
-                continue
-            price_total = float(o.get("price", {}).get("grandTotal", "0") or 0)
-            price_per_pax = price_total / pax_total
-            max_budget = body.budgetPerPaxEUR
-            if max_budget is not None and price_per_pax > float(max_budget):
-                continue
-            filtered.append(o)
-
-        ranked = rank_offers(filtered)
-
-        def _lite(x):
-            return to_lite(x, pax_total) if x else None
-
-        return {
-            "results": {
-                "cheapest": _lite(ranked.get("cheapest")),
-                "recommended": _lite(ranked.get("recommended")),
-                "direct": _lite(ranked.get("direct")),
-            },
-            "meta": {
-                "searched": {
-                    **params,
-                    "originCity": body.originCity,
-                    "destinationCity": body.destinationCity,
-                },
-                "totalCandidates": len(offers),
-                "kept": len(filtered),
-            },
-        }
-PY
-
-          # --- tests ---
+      - name: Add basic tests
+        run: |
           mkdir -p tests
-          cat > tests/test_health.py <<'PY'
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-
-client = TestClient(app)
-
-
-def test_health_ok():
-    r = client.get("/health")
-    assert r.status_code == 200
-    assert r.json() == {"status": "ok"}
-PY
-
-          cat > tests/test_utils.py <<'PY'
-from app.utils import count_stops, to_hhmm, total_duration_minutes
-
-
-def test_to_hhmm():
-    assert to_hhmm(0) == "0h00"
-    assert to_hhmm(75) == "1h15"
-
-
-def test_count_stops_direct():
-    offer = {"itineraries": [{"segments": [{}]}]}
-    assert count_stops(offer) == 0
-
-
-def test_count_stops_one_stop():
-    offer = {"itineraries": [{"segments": [{}, {}]}]}
-    assert count_stops(offer) == 1
-
-
-def test_total_duration_minutes():
-    offer = {"itineraries": [{"duration": "PT2H30M"}]}
-    assert total_duration_minutes(offer) == 150
-PY
-
-          cat > tests/test_locations_short_q.py <<'PY'
-from fastapi.testclient import TestClient
-
-from app.main import app
-
-
-client = TestClient(app)
-
-
-def test_locations_too_short():
-    r = client.get("/locations?q=p")
-    assert r.status_code == 200
-    assert r.json() == {"data": []}
-PY
+          cat > tests/test_health.py <<'EOF'
+          from fastapi.testclient import TestClient
+          from app.main import app
+          client = TestClient(app)
+          def test_health_ok():
+              r = client.get("/health")
+              assert r.status_code == 200
+              assert r.json() == {"status": "ok"}
+          EOF
+          cat > tests/test_utils.py <<'EOF'
+          from app.utils import count_stops, to_hhmm, total_duration_minutes
+          def test_to_hhmm():
+              assert to_hhmm(0) == "0h00"
+              assert to_hhmm(75) == "1h15"
+          def test_count_stops_direct():
+              offer = {"itineraries": [{"segments": [{}]}]}
+              assert count_stops(offer) == 0
+          def test_count_stops_one_stop():
+              offer = {"itineraries": [{"segments": [{}, {}]}]}
+              assert count_stops(offer) == 1
+          def test_total_duration_minutes():
+              offer = {"itineraries": [{"duration": "PT2H30M"}]}
+              assert total_duration_minutes(offer) == 150
+          EOF
+          cat > tests/test_locations_short_q.py <<'EOF'
+          from fastapi.testclient import TestClient
+          from app.main import app
+          client = TestClient(app)
+          def test_locations_too_short():
+              r = client.get("/locations?q=p")
+              assert r.status_code == 200
+              assert r.json() == {"data": []}
+          EOF
 
       - name: Create PR
         uses: peter-evans/create-pull-request@v5
@@ -512,6 +255,6 @@ PY
             - Ruff config & per-file ignore for schemas
             - requirements (dateparser + pytest deps)
             - CI workflow (lint + tests)
-            - Schemas/utils/main refactor & formatting
+            - Schemas/utils refactor & formatting
             - Basic tests (health/utils/locations)
           labels: automated
