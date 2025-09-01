@@ -9,5 +9,8 @@ ignore = []
 # On autorise Optional[...] dans ce fichier pour éviter tout souci de parsing.
 per-file-ignores = { "app/schemas.py" = ["UP045"] }
 
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
 [tool.ruff.format]
 quote-style = "double"
