@@ -290,3 +290,228 @@ async def add_request_id(request, call_next):
     response.headers["X-Request-ID"] = rid
     return response
 
+
+_allowed = os.getenv("ALLOWED_ORIGINS", "")
+origins = [o.strip() for o in _allowed.split(",") if o.strip()]
+if not origins:
+    origins = ["*"]
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=origins,
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+app.include_router(chat_router)
+app.include_router(discover_router)
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok"}
+
+
+@app.get("/locations")
+async def locations(q: str):
+    if not q or len(q) < 2:
+        return {"data": []}
+
+    async with httpx.AsyncClient(timeout=10.0) as client:
+        token = await amadeus_token(client)
+        r = await client.get(
+            f"{AMADEUS_HOST}/v1/reference-data/locations",
+            params={
+                "subType": "CITY,AIRPORT",
+                "keyword": q,
+                "sort": "analytics.travelers.score",
+            },
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        try:
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            msg = f"Amadeus locations error: {e.response.text[:200]}"
+            raise HTTPException(e.response.status_code, msg) from e
+
+        data = r.json().get("data", []) or []
+        out = []
+        for x in data[:10]:
+            out.append(
+                {
+                    "iataCode": x.get("iataCode"),
+                    "name": x.get("name"),
+                    "subType": x.get("subType"),
+                    "cityName": (x.get("address") or {}).get("cityName"),
+                    "country": (x.get("address") or {}).get("countryName"),
+                }
+            )
+        return {"data": out}
+
+
+def _resolve_dates(body: SearchBody) -> tuple[str, str]:
+    if body.departureDate and body.returnDate:
+        return body.departureDate, body.returnDate
+    if body.period:
+        import datetime as dt
+        d0 = dt.date.fromisoformat(body.period.start)
+        d1 = d0 + dt.timedelta(days=int(body.period.durationDays))
+        return d0.isoformat(), d1.isoformat()
+    raise HTTPException(
+        400,
+        "Dates invalides (départ/retour OU period.start+durationDays requis)",
+    )
+
+
+@app.post("/search")
+async def search(body: SearchBody):
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        token = await amadeus_token(client)
+        origin = await city_to_iata(client, token, body.originCity)
+        dest_city = body.destinationCity or ""
+        if not dest_city:
+            raise HTTPException(400, "destinationCity manquante")
+        dest = await city_to_iata(client, token, dest_city)
+        dep, ret = _resolve_dates(body)
+
+        pax_total = max(
+            1,
+            body.passengers.adults
+            + body.passengers.children
+            + body.passengers.infants,
+        )
+
+        params = {
+            "originLocationCode": origin,
+            "destinationLocationCode": dest,
+            "departureDate": dep,
+            "returnDate": ret,
+            "adults": body.passengers.adults or 1,
+            "children": body.passengers.children or 0,
+            "infants": body.passengers.infants or 0,
+            "currencyCode": CURRENCY,
+            "nonStop": "false",
+            "max": 50,
+            "travelClass": "ECONOMY",
+        }
+        r = await client.get(
+            f"{AMADEUS_HOST}/v2/shopping/flight-offers",
+            params=params,
+            headers={"Authorization": f"Bearer {token}"},
+        )
+        try:
+            r.raise_for_status()
+        except httpx.HTTPStatusError as e:
+            return JSONResponse(
+                status_code=e.response.status_code,
+                content={"error": e.response.text},
+            )
+
+        offers = r.json().get("data", []) or []
+
+        filtered = []
+        for o in offers:
+            if count_stops(o) > body.maxStops:
+                continue
+            price_total = float(o.get("price", {}).get("grandTotal", "0") or 0)
+            price_per_pax = price_total / pax_total
+            max_budget = body.budgetPerPaxEUR
+            if max_budget is not None and price_per_pax > float(max_budget):
+                continue
+            filtered.append(o)
+
+        ranked = rank_offers(filtered)
+
+        def _lite(x):
+            return to_lite(x, pax_total) if x else None
+
+        return {
+            "results": {
+                "cheapest": _lite(ranked.get("cheapest")),
+                "recommended": _lite(ranked.get("recommended")),
+                "direct": _lite(ranked.get("direct")),
+            },
+            "meta": {
+                "searched": {
+                    **params,
+                    "originCity": body.originCity,
+                    "destinationCity": body.destinationCity,
+                },
+                "totalCandidates": len(offers),
+                "kept": len(filtered),
+            },
+        }
+PY
+
+          # --- tests ---
+          mkdir -p tests
+          cat > tests/test_health.py <<'PY'
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+client = TestClient(app)
+
+
+def test_health_ok():
+    r = client.get("/health")
+    assert r.status_code == 200
+    assert r.json() == {"status": "ok"}
+PY
+
+          cat > tests/test_utils.py <<'PY'
+from app.utils import count_stops, to_hhmm, total_duration_minutes
+
+
+def test_to_hhmm():
+    assert to_hhmm(0) == "0h00"
+    assert to_hhmm(75) == "1h15"
+
+
+def test_count_stops_direct():
+    offer = {"itineraries": [{"segments": [{}]}]}
+    assert count_stops(offer) == 0
+
+
+def test_count_stops_one_stop():
+    offer = {"itineraries": [{"segments": [{}, {}]}]}
+    assert count_stops(offer) == 1
+
+
+def test_total_duration_minutes():
+    offer = {"itineraries": [{"duration": "PT2H30M"}]}
+    assert total_duration_minutes(offer) == 150
+PY
+
+          cat > tests/test_locations_short_q.py <<'PY'
+from fastapi.testclient import TestClient
+
+from app.main import app
+
+
+client = TestClient(app)
+
+
+def test_locations_too_short():
+    r = client.get("/locations?q=p")
+    assert r.status_code == 200
+    assert r.json() == {"data": []}
+PY
+
+      - name: Create PR
+        uses: peter-evans/create-pull-request@v5
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          branch: chore/bulk-ci-lint-fixes
+          commit-message: "chore: bulk CI & lint fixes (auto)"
+          title: "chore: bulk CI & lint fixes"
+          body: |
+            Automated patch:
+            - Ruff config & per-file ignore for schemas
+            - requirements (dateparser + pytest deps)
+            - CI workflow (lint + tests)
+            - Schemas/utils/main refactor & formatting
+            - Basic tests (health/utils/locations)
+          labels: automated
