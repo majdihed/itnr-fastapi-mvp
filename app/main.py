@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import logging
 import os
+import uuid
 
 import httpx
 from dotenv import load_dotenv
@@ -8,15 +10,11 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
+from .chat_router import router as chat_router
 from .core import AMADEUS_HOST, CURRENCY, amadeus_token, city_to_iata
+from .discover_router import router as discover_router
 from .schemas import SearchBody
 from .utils import count_stops, rank_offers, to_lite
-from .chat_router import router as chat_router
-from .discover_router import router as discover_router
-
-import logging
-import uuid
-
 
 load_dotenv()
 
