@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import math
-from typing import Any, Optional
+from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -13,7 +13,7 @@ from .utils import count_stops, rank_offers, to_lite
 router = APIRouter(prefix="/discover", tags=["discover"])
 
 
-async def geocode(client: httpx.AsyncClient, city: str) -> Optional[dict]:
+async def geocode(client: httpx.AsyncClient, city: str) -> dict | None:
     r = await client.get(
         "https://geocoding-api.open-meteo.com/v1/search",
         params={"name": city, "count": 1, "language": "fr", "format": "json"},
@@ -26,7 +26,10 @@ async def geocode(client: httpx.AsyncClient, city: str) -> Optional[dict]:
 
 
 async def climate_score(
-    client: httpx.AsyncClient, lat: float, lon: float, month: int
+    client: httpx.AsyncClient,
+    lat: float,
+    lon: float,
+    month: int,
 ) -> dict:
     url = "https://climate-api.open-meteo.com/v1/climate"
     params = {
@@ -39,8 +42,8 @@ async def climate_score(
         "temperature_2m_mean": "true",
         "precipitation_sum": "true",
     }
-    temp_c = None
-    rain_mm = None
+    temp_c: float | None = None
+    rain_mm: float | None = None
     try:
         r = await client.get(url, params=params, timeout=12.0)
         r.raise_for_status()
@@ -50,7 +53,7 @@ async def climate_score(
     except Exception:
         pass
 
-    def tscore(x: Optional[float]) -> float:
+    def tscore(x: float | None) -> float:
         if x is None:
             return 0.5
         if x <= 18:
@@ -63,7 +66,7 @@ async def climate_score(
             return 1.0 - (x - 30) * (0.4 / 4)
         return 0.4
 
-    def rpenalty(mm: Optional[float]) -> float:
+    def rpenalty(mm: float | None) -> float:
         if mm is None:
             return 0.0
         return min(0.6, (mm / 60.0) * 0.15)
@@ -89,9 +92,14 @@ async def inspiration_candidates(
 ) -> list[dict]:
     """
     Amadeus Flight Inspiration Search.
-    Certains comptes utilisent 'origin' au lieu de 'originLocationCode'.
+    Certains comptes utilisent 'origin' plutôt que 'originLocationCode'.
     """
-    params_v1 = {"origin": origin_iata, "departureDate": dep, "oneWay": "false", "viewBy": "DESTINATION"}
+    params_v1 = {
+        "origin": origin_iata,
+        "departureDate": dep,
+        "oneWay": "false",
+        "viewBy": "DESTINATION",
+    }
     params_v2 = {"originLocationCode": origin_iata, "departureDate": dep}
 
     for params in (params_v1, params_v2):
@@ -104,7 +112,7 @@ async def inspiration_candidates(
             )
             r.raise_for_status()
             data = r.json().get("data", []) or []
-            out = []
+            out: list[dict] = []
             for x in data:
                 dest = x.get("destination") or x.get("destinationLocationCode")
                 price = (x.get("price") or {}).get("total")
@@ -123,7 +131,11 @@ async def inspiration_candidates(
 async def location_info(client: httpx.AsyncClient, token: str, code: str) -> dict:
     r = await client.get(
         f"{AMADEUS_HOST}/v1/reference-data/locations",
-        params={"subType": "CITY,AIRPORT", "keyword": code, "sort": "analytics.travelers.score"},
+        params={
+            "subType": "CITY,AIRPORT",
+            "keyword": code,
+            "sort": "analytics.travelers.score",
+        },
         headers={"Authorization": f"Bearer {token}"},
         timeout=10.0,
     )
@@ -145,9 +157,17 @@ async def location_info(client: httpx.AsyncClient, token: str, code: str) -> dic
 async def discover(payload: dict):
     origin_city = (payload.get("originCity") or "").strip()
     if not origin_city:
-        return {"ask": "De quelle ville pars-tu ?", "need": ["originCity"], "mode": "discover"}
+        return {
+            "ask": "De quelle ville pars-tu ?",
+            "need": ["originCity"],
+            "mode": "discover",
+        }
 
-    passengers = payload.get("passengers") or {"adults": 1, "children": 0, "infants": 0}
+    passengers = payload.get("passengers") or {
+        "adults": 1,
+        "children": 0,
+        "infants": 0,
+    }
     max_stops = int(payload.get("maxStops", 1))
     budget = payload.get("budgetPerPaxEUR")
 
@@ -167,13 +187,18 @@ async def discover(payload: dict):
         dep, ret = d0.isoformat(), d1.isoformat()
 
     month = int(dep.split("-")[1])
-    pax_total = max(1, passengers["adults"] + passengers["children"] + passengers["infants"])
+    pax_total = max(
+        1,
+        passengers["adults"] + passengers["children"] + passengers["infants"],
+    )
 
     async with httpx.AsyncClient() as client:
         token = await amadeus_token(client)
         origin_iata = await city_to_iata(client, token, origin_city)
 
-        candidates = await inspiration_candidates(client, token, origin_iata, dep, ret, limit=25)
+        candidates = await inspiration_candidates(
+            client, token, origin_iata, dep, ret, limit=25
+        )
         if not candidates:
             raise HTTPException(
                 502,
@@ -189,11 +214,18 @@ async def discover(payload: dict):
 
             info = await location_info(client, token, dest_code)
             display_name = info.get("cityName") or info.get("name") or dest_code
-            pop_score = (info.get("analytics", {}).get("travelers", {}).get("score") or 50) / 100.0
+            pop_score = (
+                info.get("analytics", {})
+                .get("travelers", {})
+                .get("score", 50)
+                / 100.0
+            )
 
             geo = await geocode(client, display_name)
             if geo:
-                cs = await climate_score(client, geo["latitude"], geo["longitude"], month)
+                cs = await climate_score(
+                    client, geo["latitude"], geo["longitude"], month
+                )
             else:
                 cs = {"sun_score": 0.5, "temp_c": None, "rain_mm": None}
 
@@ -222,7 +254,7 @@ async def discover(payload: dict):
             except httpx.HTTPStatusError:
                 continue
 
-            filt = []
+            filt: list[dict] = []
             for o in offers:
                 if count_stops(o) > max_stops:
                     continue
@@ -235,7 +267,11 @@ async def discover(payload: dict):
                 continue
 
             best = rank_offers(filt)
-            pick = best.get("cheapest") or best.get("recommended") or best.get("direct")
+            pick = (
+                best.get("cheapest")
+                or best.get("recommended")
+                or best.get("direct")
+            )
             if not pick:
                 continue
             lite = to_lite(pick, pax_total)
