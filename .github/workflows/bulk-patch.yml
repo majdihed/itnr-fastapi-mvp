@@ -1,4 +1,4 @@
-name: Bulk Patch (CI & Lint Fix)
+name: Bulk Patch (CI & Lint Fix) v2
 on:
   workflow_dispatch:
 
@@ -8,12 +8,18 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+
     steps:
       - uses: actions/checkout@v4
 
-      - name: Ensure pyproject.toml
+      - name: Apply files
+        shell: bash
         run: |
-          cat > pyproject.toml <<EOF
+          set -euo pipefail
+          mkdir -p app tests .github/workflows
+
+          # --- pyproject.toml (Ruff) ---
+          cat > pyproject.toml <<'EOF'
           [tool.ruff]
           line-length = 100
           target-version = "py312"
@@ -27,26 +33,21 @@ jobs:
           quote-style = "double"
           EOF
 
-      - name: Ensure requirements.txt entries
-        run: |
+          # --- requirements.txt (ajoute si manquants) ---
           touch requirements.txt
-          for pkg in \
-            "fastapi==0.112.2" \
-            "uvicorn[standard]==0.30.6" \
-            "httpx==0.27.2" \
-            "python-dotenv==1.0.1" \
-            "pydantic==2.9.2" \
-            "dateparser==1.2.0" \
-            "pytest==8.3.2" \
-            "pytest-asyncio==0.23.8"
-          do
-            grep -q "^${pkg%%==*}==" requirements.txt || echo "$pkg" >> requirements.txt
-          done
+          ensure () { grep -q "^$1==" requirements.txt || echo "$1==$2" >> requirements.txt; }
+          ensure fastapi 0.112.2
+          ensure "uvicorn[standard]" 0.30.6
+          ensure httpx 0.27.2
+          ensure python-dotenv 1.0.1
+          ensure pydantic 2.9.2
+          ensure dateparser 1.2.0
+          ensure pytest 8.3.2
+          ensure pytest-asyncio 0.23.8
 
-      - name: Write CI workflow
-        run: |
+          # --- CI de base ---
           mkdir -p .github/workflows
-          cat > .github/workflows/ci.yml <<EOF
+          cat > .github/workflows/ci.yml <<'EOF'
           name: CI
           on:
             push:
@@ -87,9 +88,7 @@ jobs:
                     pytest -q
           EOF
 
-      - name: Patch app/schemas.py
-        run: |
-          mkdir -p app
+          # --- app/schemas.py ---
           cat > app/schemas.py <<'EOF'
           from __future__ import annotations
           from typing import Optional
@@ -116,29 +115,31 @@ jobs:
               flexDays: Optional[int] = None
           EOF
 
-      - name: Patch app/utils.py
-        run: |
+          # --- app/utils.py ---
           cat > app/utils.py <<'EOF'
           from __future__ import annotations
           import re
           from typing import Any
+
           def _parse_iso_duration(d: str) -> int:
               if not d or not d.startswith("PT"):
                   return 0
               hours = 0
               mins = 0
-              m = re.search(r"(\d+)H", d)
+              m = re.search(r"(\\d+)H", d)
               if m:
                   hours = int(m.group(1))
-              m = re.search(r"(\d+)M", d)
+              m = re.search(r"(\\d+)M", d)
               if m:
                   mins = int(m.group(1))
               return hours * 60 + mins
+
           def total_duration_minutes(offer: dict[str, Any]) -> int:
               total = 0
               for itin in offer.get("itineraries", []):
                   total += _parse_iso_duration(itin.get("duration", "PT0M"))
               return total
+
           def count_stops(offer: dict[str, Any]) -> int:
               stops = 0
               for itin in offer.get("itineraries", []):
@@ -146,11 +147,13 @@ jobs:
                   s = max(0, len(segs) - 1)
                   stops = max(stops, s)
               return stops
+
           def _price(offer: dict[str, Any]) -> float:
               try:
                   return float(offer.get("price", {}).get("grandTotal", "0"))
               except Exception:
                   return 0.0
+
           def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any] | None]:
               if not offers:
                   return {"cheapest": None, "recommended": None, "direct": None}
@@ -161,8 +164,10 @@ jobs:
               durs = [total_duration_minutes(o) for o in offers]
               pmin, pmax = min(prices), max(prices)
               dmin, dmax = min(durs), max(durs)
+
               def norm(x: float, lo: float, hi: float) -> float:
                   return 0.5 if hi <= lo else (x - lo) / (hi - lo)
+
               best = None
               best_score = -1.0
               for o in offers:
@@ -173,15 +178,18 @@ jobs:
                       best = o
                       best_score = score
               return {"cheapest": cheapest, "recommended": best, "direct": direct}
+
           def to_hhmm(mins: int) -> str:
               h = mins // 60
               m = mins % 60
               return f"{h}h{m:02}"
+
           def to_lite(offer: dict[str, Any], pax_total: int) -> dict[str, Any]:
               price = _price(offer)
               dur = total_duration_minutes(offer)
               carriers: list[str] = []
               legs: list[dict[str, Any]] = []
+
               for itin in offer.get("itineraries", []):
                   segs = itin.get("segments", []) or []
                   if not segs:
@@ -189,12 +197,13 @@ jobs:
                   first = segs[0]["departure"]["iataCode"]
                   last = segs[-1]["arrival"]["iataCode"]
                   dep = segs[0]["departure"]["at"]
-                  arr = segs[-1]["arrival"]["at"]
+                  arr = segs[-1"]["arrival"]["at"]
                   for s in segs:
                       c = s.get("carrierCode")
                       if c and c not in carriers:
                           carriers.append(c)
                   legs.append({"from": first, "to": last, "dep": dep, "arr": arr, "stops": max(0, len(segs) - 1)})
+
               return {
                   "price_total_eur": round(price, 2),
                   "price_per_pax_eur": round(price / max(1, pax_total), 2),
@@ -206,8 +215,7 @@ jobs:
               }
           EOF
 
-      - name: Add basic tests
-        run: |
+          # --- tests ---
           mkdir -p tests
           cat > tests/test_health.py <<'EOF'
           from fastapi.testclient import TestClient
@@ -218,6 +226,7 @@ jobs:
               assert r.status_code == 200
               assert r.json() == {"status": "ok"}
           EOF
+
           cat > tests/test_utils.py <<'EOF'
           from app.utils import count_stops, to_hhmm, total_duration_minutes
           def test_to_hhmm():
@@ -233,6 +242,7 @@ jobs:
               offer = {"itineraries": [{"duration": "PT2H30M"}]}
               assert total_duration_minutes(offer) == 150
           EOF
+
           cat > tests/test_locations_short_q.py <<'EOF'
           from fastapi.testclient import TestClient
           from app.main import app
@@ -243,11 +253,22 @@ jobs:
               assert r.json() == {"data": []}
           EOF
 
+      - name: Show changes
+        run: |
+          git status --porcelain || true
+          echo "---"
+          git diff --stat || true
+
       - name: Create PR
         uses: peter-evans/create-pull-request@v5
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           branch: chore/bulk-ci-lint-fixes
+          branch-suffix: timestamp
+          delete-branch: true
+          signoff: true
+          author: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
+          committer: "github-actions[bot] <41898282+github-actions[bot]@users.noreply.github.com>"
           commit-message: "chore: bulk CI & lint fixes (auto)"
           title: "chore: bulk CI & lint fixes"
           body: |
