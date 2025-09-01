@@ -1,3 +1,7 @@
+# ITNR API
+
+[![CI](https://github.com/majdihed/itnr-fastapi-mvp/actions/workflows/ci.yml/badge.svg)](https://github.com/majdihed/itnr-fastapi-mvp/actions/workflows/ci.yml)
+
 # ITNR – MVP (FastAPI + Amadeus)
 
 Un starter **clé en main** pour tester l'API ITNR en local (FastAPI) et interroger Amadeus.
