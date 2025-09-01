@@ -7,6 +7,9 @@
   <link rel="icon" href="itnr_mark.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css?v=20250901" />
   <script src="config.js?v=20250901"></script>
+  <!-- Calendrier (cross navigateur) -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/flatpickr/dist/flatpickr.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/flatpickr"></script>
 </head>
 <body>
   <header class="header">
@@ -26,14 +29,12 @@
       <section class="card">
         <h2 style="margin-top:0">Paramètres</h2>
 
-        <!-- Mode dates -->
         <div class="radios">
           <label><input type="radio" name="dateMode" value="exact" checked/> Dates exactes</label>
           <label><input type="radio" name="dateMode" value="period"/> Mois + durée</label>
         </div>
 
         <form id="form" novalidate>
-          <!-- Villes -->
           <div class="grid-2">
             <div class="ac-wrap">
               <label>Ville de départ</label>
@@ -47,19 +48,17 @@
             </div>
           </div>
 
-          <!-- Dates exactes -->
           <div id="dates-exact" class="grid-2" style="margin-top:12px">
             <div>
               <label>Date aller</label>
-              <input id="departureDate" class="input" type="date" required />
+              <input id="departureDate" class="input" type="text" placeholder="YYYY-MM-DD" required />
             </div>
             <div>
               <label>Date retour</label>
-              <input id="returnDate" class="input" type="date" required />
+              <input id="returnDate" class="input" type="text" placeholder="YYYY-MM-DD" required />
             </div>
           </div>
 
-          <!-- Période -->
           <div id="dates-period" class="grid-2 hidden" style="margin-top:12px">
             <div>
               <label>Mois</label>
@@ -71,7 +70,6 @@
             </div>
           </div>
 
-          <!-- Passagers -->
           <div class="grid-3" style="margin-top:12px">
             <div>
               <label>Adultes</label>
@@ -111,7 +109,7 @@
             </div>
             <div>
               <label>Budget / personne (€)</label>
-              <input id="budget" class="input" type="number" min="0" step="1" placeholder="900" />
+              <input id="budget" class="input" type="number" min="0" step="1" placeholder="500" />
             </div>
             <div>
               <label>Dates flexibles</label>
@@ -146,17 +144,19 @@
 const API = (window.API_BASE || "");
 const euro = v => "€" + (Math.round(v * 100) / 100).toFixed(2);
 const hhmm = mins => `${Math.floor(mins/60)}h${String(mins%60).padStart(2,"0")}`;
-const gflights = (origin, dest, dep, ret) =>
-  `https://www.google.com/travel/flights?q=${encodeURIComponent(`flights ${origin} to ${dest} ${dep} return ${ret}`)}&hl=fr`;
 const todayISO = () => new Date().toISOString().slice(0,10);
 
-// ---- min dates + switch exact/period
+// ---- calendrier
 (function initDates(){
-  const dep = document.getElementById('departureDate');
-  const ret = document.getElementById('returnDate');
-  const min = todayISO();
-  dep.min = min; ret.min = min;
-  dep.addEventListener('change', ()=> { ret.min = dep.value || min; if (ret.value && ret.value < ret.min) ret.value = ret.min; });
+  const depPicker = flatpickr("#departureDate", {
+    dateFormat: "Y-m-d",
+    minDate: "today",
+    onChange: (sel) => { if (sel[0]) retPicker.set("minDate", sel[0]); }
+  });
+  const retPicker = flatpickr("#returnDate", {
+    dateFormat: "Y-m-d",
+    minDate: "today"
+  });
 
   const radios = document.querySelectorAll('input[name="dateMode"]');
   const exact = document.getElementById('dates-exact');
@@ -168,7 +168,7 @@ const todayISO = () => new Date().toISOString().slice(0,10);
   }));
 })();
 
-// ---- flex days toggle
+// ---- flex toggle
 document.getElementById('flexToggle').addEventListener('change', (e)=>{
   document.getElementById('flexDays').disabled = !e.target.checked;
 });
@@ -183,7 +183,7 @@ document.querySelectorAll('.stepper button').forEach(btn=>{
   });
 });
 
-// ---- autocomplete (Amadeus proxy)
+// ---- autocomplete
 function debounce(fn, ms){ let t; return (...a)=>{ clearTimeout(t); t=setTimeout(()=>fn(...a), ms); }; }
 function bindAutocomplete(inputId, listId){
   const input = document.getElementById(inputId);
@@ -199,7 +199,6 @@ function bindAutocomplete(inputId, listId){
         const li = document.createElement('div'); li.className='ac-item';
         li.textContent = `${it.label}`;
         li.addEventListener('click', ()=>{
-          // on garde juste la ville (le backend résout en IATA ville)
           input.value = (it.cityName || it.name || '').split(' – ')[0];
           list.style.display='none'; list.innerHTML='';
         });
@@ -215,14 +214,14 @@ function bindAutocomplete(inputId, listId){
 bindAutocomplete('originCity','ac-origin');
 bindAutocomplete('destinationCity','ac-dest');
 
-// ---- toast helper
+// ---- toast
 function toast(msg, ms=2800) {
   const t = document.getElementById('toast');
   t.textContent = msg; t.style.display = 'block';
   setTimeout(()=> t.style.display = 'none', ms);
 }
 
-// ---- carte résultat avec fallback si pas de direct
+// ---- cartes
 function makeCard(title, data, meta, options = {}){
   const el = document.createElement('div'); el.className = 'card';
   const header = document.createElement('div'); header.style.fontWeight='800';
@@ -234,7 +233,7 @@ function makeCard(title, data, meta, options = {}){
       const small = document.createElement('div'); small.className='small';
       small.textContent = "Aucun vol direct. Meilleure option avec escale(s) :";
       el.appendChild(small);
-      data = alt; // on affiche la meilleure alternative
+      data = alt;
     } else {
       const m = document.createElement('div'); m.className='small'; m.textContent = 'Aucune offre trouvée.';
       el.appendChild(m); return el;
@@ -246,7 +245,7 @@ function makeCard(title, data, meta, options = {}){
     <span class="kpi">Total: ${euro(data.price_total_eur)}</span>
     <span class="kpi">€/pax: ${euro(data.price_per_pax_eur)}</span>
     <span class="kpi">Escales: ${data.stops_max}</span>
-    <span class="kpi">Durée: ${data.duration_total_hhmm || hhmm(data.duration_total_min)}</span>
+    <span class="kpi">Durée: ${data.duration_total_hhmm}</span>
     <div class="small" style="margin-top:6px">Compagnies: ${(data.carriers||[]).join(', ') || '—'}</div>
   `;
   el.appendChild(top);
@@ -254,7 +253,7 @@ function makeCard(title, data, meta, options = {}){
   const legs = document.createElement('div'); legs.className='legs';
   (data.legs||[]).forEach((g,i)=>{
     const div = document.createElement('div');
-    div.textContent = `(${i===0?'Aller':'Retour'}) ${g.from} → ${g.to} — départ ${g.dep}, arrivée ${g.arr} — escales: ${g.stops}`;
+    div.textContent = `(${i===0?'Aller':'Retour'}) ${g.from} → ${g.to} — départ ${g.dep} — arrivée ${g.arr} — escales: ${g.stops}`;
     legs.appendChild(div);
   });
   el.appendChild(legs);
@@ -263,7 +262,6 @@ function makeCard(title, data, meta, options = {}){
   const dest   = meta?.searched?.destinationLocationCode || (data?.legs?.[0]?.to)   || '';
   const dep    = meta?.searched?.departureDate || '';
   const ret    = meta?.searched?.returnDate || '';
-
   const a = document.createElement('a'); a.className='btn-link'; a.target='_blank';
   a.href = `https://www.google.com/travel/flights?q=${encodeURIComponent(`flights ${origin} to ${dest} ${dep} return ${ret}`)}&hl=fr`;
   a.textContent = 'Voir billets';
@@ -293,17 +291,13 @@ document.getElementById('form').addEventListener('submit', async (e)=>{
     period = { start: monthStart + "-01", durationDays };
   }
 
-  // passagers
   const adults = Math.max(1, parseInt(document.getElementById('adults').value||'1',10));
   const children = Math.max(0, parseInt(document.getElementById('children').value||'0',10));
   const infants = Math.max(0, parseInt(document.getElementById('infants').value||'0',10));
   if (infants > adults) { toast("Bébés ≤ adultes recommandé."); }
 
-  // flex
   let flexDays = undefined;
-  if (document.getElementById('flexToggle').checked) {
-    flexDays = parseInt(document.getElementById('flexDays').value, 10);
-  }
+  if (document.getElementById('flexToggle').checked) flexDays = parseInt(document.getElementById('flexDays').value, 10);
 
   const payload = {
     originCity, destinationCity,
@@ -328,7 +322,6 @@ document.getElementById('form').addEventListener('submit', async (e)=>{
     const data = await res.json();
     if (!res.ok) throw new Error(data.error || data.detail || JSON.stringify(data));
 
-    // cartes
     const cheapest = data.results?.cheapest || null;
     const recommended = data.results?.recommended || null;
     const direct = data.results?.direct || null;
@@ -337,7 +330,7 @@ document.getElementById('form').addEventListener('submit', async (e)=>{
     results.appendChild(makeCard("👍 Recommandé", recommended, data.meta));
     results.appendChild(makeCard("✈️ Direct", direct, data.meta, { altIfMissing: cheapest || recommended }));
 
-    hint.textContent = `Trouvés: ${data.meta.kept}/${data.meta.totalCandidates} — moteur: ${data.meta.llm || 'ok'}`;
+    hint.textContent = `Trouvés: ${data.meta.kept}/${data.meta.totalCandidates}`;
   } catch (err) {
     hint.textContent = "Une erreur est survenue.";
     toast("Erreur : " + (err?.message || err), 4500);
