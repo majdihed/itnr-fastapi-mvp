@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import os
-from typing import Optional
 
 import httpx
 from dotenv import load_dotenv
@@ -32,7 +31,8 @@ async def amadeus_token(client: httpx.AsyncClient) -> str:
     try:
         r.raise_for_status()
     except httpx.HTTPStatusError as e:
-        raise HTTPException(e.response.status_code, f"Amadeus auth failed: {e.response.text}") from e
+        msg = f"Amadeus auth failed: {e.response.text}"
+        raise HTTPException(e.response.status_code, msg) from e
     token = r.json().get("access_token")
     if not token:
         raise HTTPException(502, "Amadeus: pas de token")
@@ -45,7 +45,11 @@ async def city_to_iata(client: httpx.AsyncClient, token: str, name: str) -> str:
     """
     r = await client.get(
         f"{AMADEUS_HOST}/v1/reference-data/locations",
-        params={"subType": "CITY,AIRPORT", "keyword": name, "sort": "analytics.travelers.score"},
+        params={
+            "subType": "CITY,AIRPORT",
+            "keyword": name,
+            "sort": "analytics.travelers.score",
+        },
         headers={"Authorization": f"Bearer {token}"},
         timeout=12.0,
     )
