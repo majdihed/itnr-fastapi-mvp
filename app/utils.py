@@ -1,9 +1,7 @@
 from __future__ import annotations
 
-import math
 import re
 from typing import Any
-
 
 def _parse_iso_duration(d: str) -> int:
     """PT18H5M -> minutes."""
@@ -19,19 +17,14 @@ def _parse_iso_duration(d: str) -> int:
         mins = int(m.group(1))
     return hours * 60 + mins
 
-
 def total_duration_minutes(offer: dict[str, Any]) -> int:
     total = 0
     for itin in offer.get("itineraries", []):
         total += _parse_iso_duration(itin.get("duration", "PT0M"))
     return total
 
-
 def count_stops(offer: dict[str, Any]) -> int:
-    """
-    Nombre d'escales max par trajet (itinéraire).
-    Direct = 0 (1 segment).
-    """
+    """Nombre d'escales max par itinéraire. Direct = 0 (1 segment)."""
     stops = 0
     for itin in offer.get("itineraries", []):
         segs = itin.get("segments", []) or []
@@ -39,15 +32,13 @@ def count_stops(offer: dict[str, Any]) -> int:
         stops = max(stops, s)
     return stops
 
-
 def _price(offer: dict[str, Any]) -> float:
     try:
         return float(offer.get("price", {}).get("grandTotal", "0"))
     except Exception:
         return 0.0
 
-
-def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
+def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any] | None]:
     if not offers:
         return {"cheapest": None, "recommended": None, "direct": None}
 
@@ -56,7 +47,6 @@ def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     direct_candidates = [o for o in offers if count_stops(o) == 0]
     direct = min(direct_candidates, key=_price) if direct_candidates else None
 
-    # score recommandé: mix prix & durée
     prices = [_price(o) for o in offers]
     durs = [total_duration_minutes(o) for o in offers]
     pmin, pmax = min(prices), max(prices)
@@ -77,12 +67,10 @@ def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
 
     return {"cheapest": cheapest, "recommended": best, "direct": direct}
 
-
 def to_hhmm(mins: int) -> str:
     h = mins // 60
     m = mins % 60
-    return f"{h}h{m:02d}"
-
+    return f"{h}h{m:02}"
 
 def to_lite(offer: dict[str, Any], pax_total: int) -> dict[str, Any]:
     price = _price(offer)
@@ -103,13 +91,7 @@ def to_lite(offer: dict[str, Any], pax_total: int) -> dict[str, Any]:
             if c and c not in carriers:
                 carriers.append(c)
         legs.append(
-            {
-                "from": first,
-                "to": last,
-                "dep": dep,
-                "arr": arr,
-                "stops": max(0, len(segs) - 1),
-            }
+            {"from": first, "to": last, "dep": dep, "arr": arr, "stops": max(0, len(segs) - 1)}
         )
 
     return {
