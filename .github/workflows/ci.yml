@@ -18,7 +18,7 @@ jobs:
         uses: astral-sh/ruff-action@v3
         with:
           src: "./"
-          args: "check ."
+          args: "check . --select E,F,UP,B"
 
   test:
     runs-on: ubuntu-latest
