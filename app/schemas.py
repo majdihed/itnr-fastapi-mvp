@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from typing import Optional
-from pydantic import BaseModel, Field
 
+from pydantic import BaseModel, Field
 
 class Period(BaseModel):
     # Début de la période (YYYY-MM-DD) et durée en jours
