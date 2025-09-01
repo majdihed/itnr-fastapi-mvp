@@ -14,6 +14,21 @@ load_dotenv()
 
 app = FastAPI(title="ITNR API")
 
+# app/main.py
+from fastapi.middleware.cors import CORSMiddleware
+
+app = FastAPI(title="ITNR API")
+
+# TEMP: tout autoriser pour débloquer (on resserrera ensuite)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],        # ensuite on mettra ton domaine exact
+    allow_credentials=False,    # False obligatoire si "*"
+    allow_methods=["*"],
+    allow_headers=["*"],
+    max_age=86400,
+)
+
 
 @app.get("/health")
 def health():
