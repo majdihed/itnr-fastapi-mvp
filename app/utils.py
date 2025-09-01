@@ -1,77 +1,123 @@
+from __future__ import annotations
+
+import math
 import re
+from typing import Any, Dict, List
 
-def total_duration_minutes(offer: dict) -> int:
-    def iso_to_min(s: str) -> int:
-        h = m = 0
-        mH = re.search(r'(\d+)H', s or '')
-        mM = re.search(r'(\d+)M', s or '')
-        if mH: h = int(mH.group(1))
-        if mM: m = int(mM.group(1))
-        return h*60 + m
-    return sum(iso_to_min(itin.get('duration')) for itin in offer.get('itineraries', []))
 
-def count_stops(offer: dict) -> int:
-    max_stops = 0
-    for itin in offer.get('itineraries', []):
-        segs = itin.get('segments', [])
-        max_stops = max(max_stops, max(0, len(segs)-1))
-    return max_stops
+def _parse_iso_duration(d: str) -> int:
+    """PT18H5M -> minutes."""
+    if not d or not d.startswith("PT"):
+        return 0
+    hours = 0
+    mins = 0
+    m = re.search(r"(\d+)H", d)
+    if m:
+        hours = int(m.group(1))
+    m = re.search(r"(\d+)M", d)
+    if m:
+        mins = int(m.group(1))
+    return hours * 60 + mins
 
-def rank_offers(offers: list[dict]) -> dict:
+
+def total_duration_minutes(offer: Dict[str, Any]) -> int:
+    total = 0
+    for itin in offer.get("itineraries", []):
+        total += _parse_iso_duration(itin.get("duration", "PT0M"))
+    return total
+
+
+def count_stops(offer: Dict[str, Any]) -> int:
+    """
+    Nombre d'escales max par trajet (itinéraire).
+    Direct = 0 (1 segment).
+    """
+    stops = 0
+    for itin in offer.get("itineraries", []):
+        segs = itin.get("segments", []) or []
+        s = max(0, len(segs) - 1)
+        stops = max(stops, s)
+    return stops
+
+
+def _price(offer: Dict[str, Any]) -> float:
+    try:
+        return float(offer.get("price", {}).get("grandTotal", "0"))
+    except Exception:
+        return 0.0
+
+
+def rank_offers(offers: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
     if not offers:
-        return {}
-    cheapest = min(offers, key=lambda o: float(o['price']['grandTotal']))
-    directs = [o for o in offers if count_stops(o) == 0]
-    direct = None
-    if directs:
-        direct = sorted(directs, key=lambda o: (total_duration_minutes(o), float(o['price']['grandTotal'])))[0]
-    prices = [float(o['price']['grandTotal']) for o in offers]
-    durs = [total_duration_minutes(o) for o in offers]
-    pmin,pmax = min(prices), max(prices)
-    dmin,dmax = min(durs), max(durs)
-    def norm(x, lo, hi): return 0 if hi==lo else (x-lo)/(hi-lo)
-    def score(o):
-        return 0.6*norm(float(o['price']['grandTotal']), pmin,pmax) + 0.4*norm(total_duration_minutes(o), dmin,dmax)
-    recommended = min(offers, key=score)
-    return {'cheapest': cheapest, 'recommended': recommended, 'direct': direct}
+        return {"cheapest": None, "recommended": None, "direct": None}
 
-def hhmm(minutes: int) -> str:
-    h, m = divmod(minutes, 60)
+    cheapest = min(offers, key=_price)
+
+    direct_candidates = [o for o in offers if count_stops(o) == 0]
+    direct = min(direct_candidates, key=_price) if direct_candidates else None
+
+    # score recommandé: mix prix & durée
+    prices = [_price(o) for o in offers]
+    durs = [total_duration_minutes(o) for o in offers]
+    pmin, pmax = min(prices), max(prices)
+    dmin, dmax = min(durs), max(durs)
+
+    def norm(x: float, lo: float, hi: float) -> float:
+        return 0.5 if hi <= lo else (x - lo) / (hi - lo)
+
+    best = None
+    best_score = -1.0
+    for o in offers:
+        pn = norm(_price(o), pmin, pmax)
+        dn = norm(total_duration_minutes(o), dmin, dmax)
+        score = 0.6 * (1 - pn) + 0.4 * (1 - dn)
+        if score > best_score:
+            best = o
+            best_score = score
+
+    return {"cheapest": cheapest, "recommended": best, "direct": direct}
+
+
+def to_hhmm(mins: int) -> str:
+    h = mins // 60
+    m = mins % 60
     return f"{h}h{m:02d}"
 
-def carriers(offer: dict) -> list[str]:
-    return sorted({seg["carrierCode"]
-                   for itin in offer.get("itineraries", [])
-                   for seg in itin.get("segments", [])})
 
-def leg_summary(offer: dict) -> list[dict]:
-    legs = []
+def to_lite(offer: Dict[str, Any], pax_total: int) -> Dict[str, Any]:
+    price = _price(offer)
+    dur = total_duration_minutes(offer)
+    carriers: List[str] = []
+    legs: List[Dict[str, Any]] = []
+
     for itin in offer.get("itineraries", []):
-        segs = itin.get("segments", [])
+        segs = itin.get("segments", []) or []
         if not segs:
             continue
-        first, last = segs[0], segs[-1]
-        legs.append({
-            "from": first["departure"]["iataCode"],
-            "to": last["arrival"]["iataCode"],
-            "dep": first["departure"]["at"],
-            "arr": last["arrival"]["at"],
-            "stops": max(0, len(segs) - 1),
-            "duration": itin.get("duration")
-        })
-    return legs
+        first = segs[0]["departure"]["iataCode"]
+        last = segs[-1]["arrival"]["iataCode"]
+        dep = segs[0]["departure"]["at"]
+        arr = segs[-1]["arrival"]["at"]
+        for s in segs:
+            c = s.get("carrierCode")
+            if c and c not in carriers:
+                carriers.append(c)
+        legs.append(
+            {
+                "from": first,
+                "to": last,
+                "dep": dep,
+                "arr": arr,
+                "stops": max(0, len(segs) - 1),
+            }
+        )
 
-def to_lite(offer: dict, pax_total: int) -> dict:
-    total = float(offer["price"]["grandTotal"])
-    dur_min = total_duration_minutes(offer)
     return {
-        "price_total_eur": total,
-        "price_per_pax_eur": round(total / max(1, pax_total), 2),
+        "price_total_eur": round(price, 2),
+        "price_per_pax_eur": round(price / max(1, pax_total), 2),
+        "duration_total_min": dur,
+        "duration_total_hhmm": to_hhmm(dur),
         "stops_max": count_stops(offer),
-        "duration_total_min": dur_min,
-        "duration_total_hhmm": hhmm(dur_min),
-        "carriers": carriers(offer),
-        "legs": leg_summary(offer),
-        "raw_id": offer.get("id"),
+        "carriers": carriers,
+        "legs": legs,
     }
-
