@@ -150,3 +150,7 @@ async def search(body: SearchBody):
 # Import au top-level pour éviter E402 et ne plus créer de boucle
 from .chat_router import router as chat_router  # noqa: E402  (si tu veux vraiment éviter E402)
 app.include_router(chat_router)
+
+from .discover_router import router as discover_router
+app.include_router(discover_router)
+
