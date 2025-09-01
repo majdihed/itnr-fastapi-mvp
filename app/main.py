@@ -28,6 +28,39 @@ app.add_middleware(
     max_age=86400,
 )
 
+# --- [NOUVEAU] /locations : autocomplétion villes/aéroports ---
+from fastapi import Query
+
+@app.get("/locations")
+async def locations(q: str = Query(..., min_length=2),
+                    subtype: str = "CITY,AIRPORT",
+                    limit: int = 7):
+    async with httpx.AsyncClient(timeout=15.0) as client:
+        token = await amadeus_token(client)
+        r = await client.get(
+            f"{AMADEUS_HOST}/v1/reference-data/locations",
+            params={"subType": subtype, "keyword": q, "page[limit]": limit, "sort": "analytics.travelers.score"},
+            headers={"Authorization": f"Bearer {token}"}
+        )
+        r.raise_for_status()
+        data = r.json().get("data", []) or []
+
+    # on renvoie un format simple pour l’autocomplete
+    out = []
+    for x in data:
+        out.append({
+            "subType": x.get("subType"),                # CITY ou AIRPORT
+            "iataCode": x.get("iataCode"),
+            "name": x.get("name"),
+            "cityCode": x.get("address", {}).get("cityCode"),
+            "cityName": x.get("address", {}).get("cityName"),
+            "countryCode": x.get("address", {}).get("countryCode"),
+            "label": f"{x.get('name')} ({x.get('iataCode')})" if x.get("subType") == "AIRPORT"
+                     else f"{x.get('name')} — ville ({x.get('iataCode')})"
+        })
+    return {"items": out[:limit]}
+
+
 @app.get("/health")
 def health():
     return {"status": "ok"}
