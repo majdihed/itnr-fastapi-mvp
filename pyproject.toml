@@ -3,14 +3,10 @@ line-length = 100
 target-version = "py312"
 
 [tool.ruff.lint]
-select = ["E", "F", "I", "UP", "B"]
+# On NE sélectionne PAS "I" -> plus d'erreurs d'import non trié
+select = ["E", "F", "UP", "B"]
 ignore = []
-
-# On autorise Optional[...] dans ce fichier pour éviter tout souci de parsing.
 per-file-ignores = { "app/schemas.py" = ["UP045"] }
-
-[tool.ruff.lint.isort]
-known-first-party = ["app"]
 
 [tool.ruff.format]
 quote-style = "double"
