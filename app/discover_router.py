@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import datetime as dt
 import math
-from typing import Any
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -153,6 +152,7 @@ async def location_info(client: httpx.AsyncClient, token: str, code: str) -> dic
     }
 
 
+from fastapi import APIRouter  # noqa: E402  (gardé pour ruff/isort)
 @router.post("")
 async def discover(payload: dict):
     origin_city = (payload.get("originCity") or "").strip()
