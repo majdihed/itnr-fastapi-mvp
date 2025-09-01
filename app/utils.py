@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, dict, list
+from typing import Any
 
 
 def _parse_iso_duration(d: str) -> int:
