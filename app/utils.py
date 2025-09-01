@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 import re
-from typing import Any, Dict, List
+from typing import Any, dict, list
 
 
 def _parse_iso_duration(d: str) -> int:
@@ -20,14 +20,14 @@ def _parse_iso_duration(d: str) -> int:
     return hours * 60 + mins
 
 
-def total_duration_minutes(offer: Dict[str, Any]) -> int:
+def total_duration_minutes(offer: dict[str, Any]) -> int:
     total = 0
     for itin in offer.get("itineraries", []):
         total += _parse_iso_duration(itin.get("duration", "PT0M"))
     return total
 
 
-def count_stops(offer: Dict[str, Any]) -> int:
+def count_stops(offer: dict[str, Any]) -> int:
     """
     Nombre d'escales max par trajet (itinéraire).
     Direct = 0 (1 segment).
@@ -40,14 +40,14 @@ def count_stops(offer: Dict[str, Any]) -> int:
     return stops
 
 
-def _price(offer: Dict[str, Any]) -> float:
+def _price(offer: dict[str, Any]) -> float:
     try:
         return float(offer.get("price", {}).get("grandTotal", "0"))
     except Exception:
         return 0.0
 
 
-def rank_offers(offers: List[Dict[str, Any]]) -> Dict[str, Dict[str, Any]]:
+def rank_offers(offers: list[dict[str, Any]]) -> dict[str, dict[str, Any]]:
     if not offers:
         return {"cheapest": None, "recommended": None, "direct": None}
 
@@ -84,11 +84,11 @@ def to_hhmm(mins: int) -> str:
     return f"{h}h{m:02d}"
 
 
-def to_lite(offer: Dict[str, Any], pax_total: int) -> Dict[str, Any]:
+def to_lite(offer: dict[str, Any], pax_total: int) -> dict[str, Any]:
     price = _price(offer)
     dur = total_duration_minutes(offer)
-    carriers: List[str] = []
-    legs: List[Dict[str, Any]] = []
+    carriers: list[str] = []
+    legs: list[dict[str, Any]] = []
 
     for itin in offer.get("itineraries", []):
         segs = itin.get("segments", []) or []
