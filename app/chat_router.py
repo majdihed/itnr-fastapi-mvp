@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 import re
-from typing import Any, Dict
+from typing import Any, dict
 
 import httpx
 from fastapi import APIRouter, HTTPException
@@ -32,7 +32,7 @@ def _parse_budget(text: str) -> float | None:
     return float(m.group(1).replace(",", ".")) if m else None
 
 
-def _parse_pax(text: str) -> Dict[str, int]:
+def _parse_pax(text: str) -> dict[str, int]:
     def _n(pat: str, default: int) -> int:
         m = re.search(pat, text, re.I)
         return int(m.group(1)) if m else default
@@ -123,7 +123,7 @@ def _complete_dates(parsed: dict) -> None:
 
 def _heuristic_parse(text: str) -> dict[str, Any]:
     origin, dest = _parse_cities(text)
-    out: Dict[str, Any] = {
+    out: dict[str, Any] = {
         "originCity": origin or "",
         "destinationCity": dest or "",
         "passengers": _parse_pax(text),
@@ -160,7 +160,7 @@ async def chat_query(payload: dict):
         if need:
             return {"ask": "Pour te proposer des destinations soleil, j’ai besoin de :", "need": need, "mode": "discover"}
 
-        body: Dict[str, Any] = {
+        body: dict[str, Any] = {
             "originCity": parsed["originCity"] or "Paris",
             "passengers": parsed.get("passengers") or {"adults": 1, "children": 0, "infants": 0},
             "maxStops": parsed.get("maxStops", 1),
