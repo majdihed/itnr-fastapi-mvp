@@ -14,9 +14,24 @@ from .utils import count_stops, rank_offers, to_lite
 from .chat_router import router as chat_router
 from .discover_router import router as discover_router
 
+import logging
+import uuid
+
+
 load_dotenv()
 
 app = FastAPI(title="ITNR API")
+
+# Logging basique
+logging.basicConfig(level=os.getenv("LOG_LEVEL", "INFO"))
+
+# Request ID pour tracer chaque requête
+@app.middleware("http")
+async def add_request_id(request, call_next):
+    rid = request.headers.get("X-Request-ID") or str(uuid.uuid4())
+    response = await call_next(request)
+    response.headers["X-Request-ID"] = rid
+    return response
 
 # --- CORS ---
 _allowed = os.getenv("ALLOWED_ORIGINS", "")
