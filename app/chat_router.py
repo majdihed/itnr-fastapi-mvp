@@ -32,6 +32,18 @@ MONTHS_FR = {
     "decembre": 12,
 }
 
+ISO_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
+
+
+def _ensure_iso(date_str: str | None) -> str | None:
+    """Retourne une date ISO (YYYY-MM-DD) ou None si inparsable."""
+    if not date_str:
+        return None
+    if ISO_RE.match(date_str):
+        return date_str
+    d = dateparser.parse(date_str, languages=["fr"])
+    return d.date().isoformat() if d else None
+
 
 def _parse_budget(text: str) -> float | None:
     m = re.search(r"(\d+[.,]?\d*)\s*€", text)
@@ -92,10 +104,12 @@ def _parse_cities(text: str) -> tuple[str | None, str | None]:
 
 
 def _parse_dates(text: str) -> dict[str, Any]:
+    # 1) Forme explicite ISO
     m = re.search(r"du\s+(\d{4}-\d{2}-\d{2})\s+au\s+(\d{4}-\d{2}-\d{2})", text)
     if m:
         return {"departureDate": m.group(1), "returnDate": m.group(2)}
 
+    # 2) "du 5 janvier au 28 janvier 2026" etc.
     m = re.search(r"du\s+(.+?)\s+au\s+(.+?)(?:[,\.]|$)", text, re.I)
     if m:
         d1 = dateparser.parse(m.group(1), languages=["fr"])
@@ -106,6 +120,7 @@ def _parse_dates(text: str) -> dict[str, Any]:
                 "returnDate": d2.date().isoformat(),
             }
 
+    # 3) "entre janvier et février 2026" + durée (semaines/jours)
     pat3 = r"entre\s+([a-zéèêàîôûç]+)\s+et\s+([a-zéèêàîôûç]+)\s+(\d{4})"
     m = re.search(pat3, text, re.I)
     if m:
@@ -123,6 +138,21 @@ def _parse_dates(text: str) -> dict[str, Any]:
                 dur = 21
             return {"period": {"start": start.isoformat(), "durationDays": dur}}
 
+    # 4) "en janvier 2026" + durée
+    m = re.search(r"\ben\s+([a-zéèêàîôûç]+)\s+(\d{4})\b", text, re.I)
+    if m:
+        mon, year = m.group(1).lower(), int(m.group(2))
+        if mon in MONTHS_FR:
+            start = dt.date(year, MONTHS_FR[mon], 1)
+            m_dur = re.search(r"(\d+)\s*(?:semaines?|jours?)", text, re.I)
+            if m_dur:
+                raw = m_dur.group(1)
+                dur = int(raw) * 7 if "semaine" in m_dur.group(0).lower() else int(raw)
+            else:
+                dur = 21
+            return {"period": {"start": start.isoformat(), "durationDays": dur}}
+
+    # 5) Deux ISO n'importe où
     iso = re.findall(r"\d{4}-\d{2}-\d{2}", text)
     if len(iso) >= 2:
         return {"departureDate": iso[0], "returnDate": iso[1]}
@@ -165,23 +195,29 @@ async def chat_query(payload: dict):
 
     parsed = _heuristic_parse(user_msg)
 
+    # Dates: force ISO ou calcule à partir de period
+    dep = _ensure_iso(parsed.get("departureDate"))
+    ret = _ensure_iso(parsed.get("returnDate"))
+    if (not dep or not ret) and parsed.get("period"):
+        d0 = dt.date.fromisoformat(parsed["period"]["start"])
+        dur = int(parsed["period"]["durationDays"])
+        dep = d0.isoformat()
+        ret = (d0 + dt.timedelta(days=dur)).isoformat()
+
     # Mode découverte si pas de destination et intention soleil/budget/mois
     sun_rx = r"\b(?:soleil|plage|ensoleill|chaud)"
     wants_sun = bool(re.search(sun_rx, user_msg, re.I))
     has_dest = bool(parsed.get("destinationCity"))
+
     if not has_dest and (wants_sun or parsed.get("budgetPerPaxEUR") or parsed.get("period")):
         need: list[str] = []
         if not parsed.get("originCity"):
             need.append("originCity")
-        has_dates = parsed.get("departureDate") and parsed.get("returnDate")
-        if not has_dates and not parsed.get("period"):
+        if not (dep and ret):
             need.append("dates (aller/retour) ou period.start + durationDays")
         if need:
             return {
-                "ask": (
-                    "Pour te proposer des destinations soleil, "
-                    "j’ai besoin de :"
-                ),
+                "ask": "Pour te proposer des destinations, j’ai besoin de :",
                 "need": need,
                 "mode": "discover",
             }
@@ -193,48 +229,46 @@ async def chat_query(payload: dict):
             "maxStops": parsed.get("maxStops", 1),
             "budgetPerPaxEUR": parsed.get("budgetPerPaxEUR"),
         }
-        if parsed.get("period"):
+        if parsed.get("period") and not (dep and ret):
             body["period"] = parsed["period"]
         else:
-            body["departureDate"] = parsed["departureDate"]
-            body["returnDate"] = parsed["returnDate"]
+            body["departureDate"] = dep
+            body["returnDate"] = ret
 
-        # appelle directement /discover sans HTTP
         return {"mode": "discover", **(await discover_fn(body))}
 
     # Sinon: recherche destination connue
-    pax_total = max(
-        1,
-        parsed.get("passengers", {}).get("adults", 1)
-        + parsed.get("passengers", {}).get("children", 0)
-        + parsed.get("passengers", {}).get("infants", 0),
-    )
+    if not (dep and ret):
+        return {
+            "ask": "Indique des dates (YYYY-MM-DD) ou un mois + durée (ex: 'en janvier 2026 pour 3 semaines').",
+            "need": ["dates"],
+            "mode": "search",
+        }
+
+    pax = parsed.get("passengers", {})
+    pax_total = max(1, pax.get("adults", 1) + pax.get("children", 0) + pax.get("infants", 0))
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         token = await amadeus_token(client)
-        origin = await city_to_iata(
-            client,
-            token,
-            parsed.get("originCity") or "Paris",
-        )
-        dest = await city_to_iata(
-            client,
-            token,
-            parsed.get("destinationCity") or "Bangkok",
-        )
+        origin = await city_to_iata(client, token, parsed.get("originCity") or "Paris")
+        dest = await city_to_iata(client, token, parsed.get("destinationCity") or "Bangkok")
+
         params = {
             "originLocationCode": origin,
             "destinationLocationCode": dest,
-            "departureDate": parsed.get("departureDate"),
-            "returnDate": parsed.get("returnDate"),
-            "adults": parsed.get("passengers", {}).get("adults", 1),
-            "children": parsed.get("passengers", {}).get("children", 0),
-            "infants": parsed.get("passengers", {}).get("infants", 0),
+            "departureDate": dep,
+            "returnDate": ret,
+            "adults": pax.get("adults", 1),
+            "children": pax.get("children", 0),
+            "infants": pax.get("infants", 0),
             "currencyCode": CURRENCY,
             "nonStop": "false",
             "max": 50,
             "travelClass": "ECONOMY",
         }
+        # Retire les None pour éviter des erreurs Amadeus
+        params = {k: v for k, v in params.items() if v is not None}
+
         try:
             r = await client.get(
                 f"{AMADEUS_HOST}/v2/shopping/flight-offers",
@@ -249,12 +283,12 @@ async def chat_query(payload: dict):
         offers = r.json().get("data", []) or []
 
     filtered: list[dict[str, Any]] = []
+    budget = parsed.get("budgetPerPaxEUR")
     for o in offers:
         if count_stops(o) > parsed.get("maxStops", 1):
             continue
         price_per_pax = float(o["price"]["grandTotal"]) / pax_total
-        b = parsed.get("budgetPerPaxEUR")
-        if b is not None and price_per_pax > float(b):
+        if budget is not None and price_per_pax > float(budget):
             continue
         filtered.append(o)
 
@@ -269,7 +303,7 @@ async def chat_query(payload: dict):
         "direct": _lite(ranked.get("direct")),
     }
     meta = {
-        "parsed": parsed,
+        "parsed": {**parsed, "departureDate": dep, "returnDate": ret},
         "kept": len(filtered),
         "total": len(offers),
         "llm": "heuristic",
